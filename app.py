@@ -40,7 +40,7 @@ def save_attendance(df):
 
 # --- 메인 앱 로직 ---
 def main():
-    st.title("⛪ 은혜교회 출석체크 시스템")
+    st.title("⛪ 회교회 출석체크 시스템")
 
     # [사이드바] 로그인 및 메뉴
     with st.sidebar:
@@ -228,4 +228,5 @@ def main():
                     st.error("해당 이름의 멤버를 찾을 수 없습니다.")
 
 if __name__ == "__main__":
+
     main()
