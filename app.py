@@ -211,21 +211,65 @@ def main():
 
     # --- TAB 2: 통계 ---
     with tabs[1]:
-        st.subheader("통계")
+        st.subheader("통계 및 히스토리")
+        
         if df_att.empty:
-            st.info("데이터 없음")
+            st.info("아직 데이터가 없습니다.")
         else:
-            view_df = df_att if is_admin else df_att[df_att["소그룹"] == current_user["담당소그룹"]]
-            # 날짜 변환
-            view_df["날짜"] = pd.to_datetime(view_df["날짜"], errors='coerce')
-            view_df["월"] = view_df["날짜"].dt.strftime("%Y-%m")
-            
-            mode = st.radio("보기", ["월별 추세", "인원별"])
-            if mode == "월별 추세":
-                st.line_chart(view_df.groupby("월")["이름"].count())
-            else:
-                st.dataframe(view_df["이름"].value_counts(), use_container_width=True)
+            # 데이터 전처리 (날짜 형식 통일)
+            df_att["날짜"] = pd.to_datetime(df_att["날짜"], errors='coerce')
+            df_att["연도"] = df_att["날짜"].dt.year
+            df_att["월"] = df_att["날짜"].dt.strftime("%Y-%m")
 
+            # --- [기능 1] 전체 통계 (기존 기능) ---
+            st.markdown("### 📊 전체 현황")
+            stat_mode = st.radio("보기 방식", ["월별 추세", "소그룹별 출석왕"], horizontal=True)
+            
+            if stat_mode == "월별 추세":
+                # 전체 출석 인원 추이
+                daily_counts = df_att.groupby("월")["이름"].count()
+                st.line_chart(daily_counts)
+            else:
+                # 소그룹별로 누가 많이 왔나
+                if is_admin:
+                    # 관리자는 전체 보기
+                    group_stat = df_att.groupby("소그룹")["이름"].count().reset_index(name="총 출석수")
+                    st.bar_chart(group_stat.set_index("소그룹"))
+                else:
+                    # 리더는 우리 그룹만
+                    my_group_att = df_att[df_att["소그룹"] == current_user["담당소그룹"]]
+                    member_counts = my_group_att["이름"].value_counts().reset_index()
+                    member_counts.columns = ["이름", "출석횟수"]
+                    st.dataframe(member_counts, use_container_width=True)
+
+            st.divider()
+
+            # --- [기능 2] 👤 개인별 상세 이력 (새로 추가된 기능!) ---
+            if is_admin:
+                st.markdown("### 👤 개인별 출석 히스토리 (관리자 전용)")
+                st.caption("특정 성도가 연도별로 어느 소그룹에 있었고, 얼마나 출석했는지 확인합니다.")
+
+                # 검색창 만들기
+                search_person = st.selectbox("성도 이름 선택", ["선택해주세요"] + sorted(df_att["이름"].unique()))
+                
+                if search_person != "선택해주세요":
+                    # 선택한 사람의 기록만 뽑기
+                    person_history = df_att[df_att["이름"] == search_person]
+                    
+                    # [핵심 로직] 연도별 + 소그룹별로 묶어서 보여주기
+                    # 예: 2026년 사랑목장 50회 / 2027년 믿음목장 2회
+                    history_summary = person_history.groupby(["연도", "소그룹"])["출석여부"].count().reset_index()
+                    history_summary.columns = ["연도", "당시 소그룹", "출석 횟수"]
+                    
+                    st.write(f"**📘 {search_person}님의 연도별 활동 내역**")
+                    st.table(history_summary)
+                    
+                    # 상세 날짜별 기록 펼쳐보기
+                    with st.expander(f"{search_person}님의 전체 출석 날짜 보기"):
+                        st.dataframe(
+                            person_history[["날짜", "모임명", "소그룹", "출석여부"]].sort_values(by="날짜", ascending=False),
+                            use_container_width=True
+                        )
     # --- TAB 3: 명단 관리 ---
     with tabs[2]:
         st.subheader("명단 관리 (구글 시트 연동)")
@@ -258,5 +302,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
