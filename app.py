@@ -140,7 +140,7 @@ def main():
         else:
             c1.caption(f"선택한 날짜는 **{korean_day}요일** 입니다.")
 
-        meeting_name = c2.selectbox("모임", ["주일 1부", "주일 2부", "주일 오후", "수요예배", "금요철야", "새벽예배"])
+        meeting_name = c2.selectbox("모임", ["주일 1부", "주일 2부", "주일 오후", "소그룹 모임", "수요예배", "금요철야", "새벽예배"])
 
         # --- [업그레이드] 소그룹 선택 로직 (다중 소그룹 지원) ---
         all_groups = sorted(df_members["소그룹"].unique()) if not df_members.empty else []
@@ -326,6 +326,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
