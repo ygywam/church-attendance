@@ -130,13 +130,11 @@ def main():
         st.subheader("모임 출석 확인")
         c1, c2 = st.columns(2)
         
-        # [수정] 날짜 선택 및 요일 표시 기능
+        # [기능 유지] 날짜 및 요일 표시
         check_date = c1.date_input("날짜 선택", datetime.date.today())
-        
         weekdays = ["(월)", "(화)", "(수)", "(목)", "(금)", "(토)", "(일)"]
         korean_day = weekdays[check_date.weekday()]
         
-        # 요일 표출 (일요일은 빨간색 강조)
         if korean_day == "(일)":
             c1.markdown(f":red[**오늘은 {korean_day}요일 입니다.**]") 
         else:
@@ -144,21 +142,35 @@ def main():
 
         meeting_name = c2.selectbox("모임", ["주일 1부", "주일 2부", "주일 오후", "수요예배", "금요철야", "새벽예배"])
 
+        # --- [업그레이드] 소그룹 선택 로직 (다중 소그룹 지원) ---
         all_groups = sorted(df_members["소그룹"].unique()) if not df_members.empty else []
         
         if is_admin:
             selected_group = st.selectbox("소그룹 (관리자)", ["전체 보기"] + list(all_groups))
         else:
-            selected_group = current_user["담당소그룹"]
-            st.info(f"📌 담당: {selected_group}")
+            # 1. 쉼표(,)로 구분된 소그룹을 리스트로 분리 (예: "사랑, 믿음" -> ["사랑", "믿음"])
+            raw_groups = str(current_user["담당소그룹"])
+            my_groups = [g.strip() for g in raw_groups.split(",") if g.strip()]
+            
+            # 2. 맡은 그룹이 2개 이상이면 선택 박스 표시
+            if len(my_groups) > 1:
+                selected_group = st.selectbox("📌 관리할 소그룹을 선택하세요", my_groups)
+            elif len(my_groups) == 1:
+                selected_group = my_groups[0]
+                st.info(f"📌 담당: {selected_group}")
+            else:
+                st.error("담당 소그룹이 설정되지 않았습니다.")
+                selected_group = None
 
-        if selected_group != "전체 보기":
+        # --- 명단 필터링 및 출석 체크 UI (기존과 동일) ---
+        if selected_group and selected_group != "전체 보기":
             target_members = df_members[df_members["소그룹"] == selected_group]
-        else:
+        elif selected_group == "전체 보기":
             target_members = df_members
+        else:
+            target_members = pd.DataFrame() # 선택 안됨
 
         if not target_members.empty:
-            # 현재 날짜/모임의 기존 출석자 명단 추출
             current_log = df_att[
                 (df_att["날짜"] == str(check_date)) & 
                 (df_att["모임명"] == meeting_name)
@@ -176,37 +188,26 @@ def main():
                     status_dict[name] = cols[idx % 3].checkbox(name, value=is_checked)
                 
                 if st.form_submit_button("저장하기", use_container_width=True):
-                    # 1. 변화된 내용 계산
-                    new_records = []
-                    
-                    # 해당 그룹의 기존 기록 삭제를 위해 필터링 필요 (복잡도 감소를 위해 덮어쓰기 대신 추가 방식 사용 권장하나, 정확성을 위해 삭제 후 재입력 로직 적용)
-                    # 구글 시트에서는 '부분 삭제'가 어려우므로, 이 날짜/이 모임/이 그룹의 기존 데이터를 메모리에서 지우고 전체를 다시 저장하는 것은 너무 느림.
-                    # 따라서 '추가(Append)'만 하되, 통계 낼 때 중복 제거하는 방식 or 
-                    # 관리 편의를 위해 여기서는 [기존 전체 로드 -> 해당 부분 삭제 -> 추가 -> 전체 저장] 방식을 씁니다. (데이터 2000행 이하는 3~5초 소요됨)
-                    
-                    # 전체 데이터에서 (오늘날짜 + 지금모임 + 지금소그룹)에 해당하는 사람들을 일단 뺍니다.
+                    # 전체 데이터에서 (오늘날짜 + 모임 + 현재선택된소그룹) 데이터만 제거 후 재저장
+                    # (다른 소그룹 데이터는 건드리지 않음)
                     mask = (
                         (df_att["날짜"] == str(check_date)) & 
                         (df_att["모임명"] == meeting_name) & 
-                        (df_att["소그룹"].isin(target_members["소그룹"].unique()))
+                        (df_att["소그룹"] == selected_group)  # 중요: 현재 선택된 그룹만 갱신
                     )
                     df_clean = df_att[~mask]
 
-                    # 체크된 사람만 새로 리스트 생성
+                    new_records = []
                     for name, checked in status_dict.items():
                         if checked:
-                            grp = df_members[df_members["이름"]==name].iloc[0]["소그룹"]
                             new_records.append({
                                 "날짜": str(check_date), "모임명": meeting_name,
-                                "이름": name, "소그룹": grp, "출석여부": "출석"
+                                "이름": name, "소그룹": selected_group, "출석여부": "출석"
                             })
                     
-                    # 합치기
                     df_final = pd.concat([df_clean, pd.DataFrame(new_records)], ignore_index=True)
-                    
-                    # 구글 시트에 저장
                     save_data("attendance_log", df_final)
-                    st.success("구글 시트에 저장되었습니다!")
+                    st.success(f"{selected_group} 출석이 저장되었습니다!")
                     st.rerun()
 
     # --- TAB 2: 통계 ---
@@ -272,21 +273,44 @@ def main():
                         )
     # --- TAB 3: 명단 관리 ---
     with tabs[2]:
-        st.subheader("명단 관리 (구글 시트 연동)")
+        st.subheader("명단 관리")
         
-        edit_target = df_members if is_admin else df_members[df_members["소그룹"] == current_user["담당소그룹"]]
+        # [업그레이드] 다중 소그룹 권한 처리
+        if is_admin:
+            edit_target = df_members
+        else:
+            # 리더가 맡은 모든 그룹의 사람들을 가져옵니다.
+            raw_groups = str(current_user["담당소그룹"])
+            my_groups = [g.strip() for g in raw_groups.split(",") if g.strip()]
+            
+            # 내 그룹들에 속한 사람들만 필터링
+            edit_target = df_members[df_members["소그룹"].isin(my_groups)]
+            
+            if len(my_groups) > 1:
+                st.info(f"📋 담당 그룹({len(my_groups)}개): {', '.join(my_groups)} 명단을 관리합니다.")
+            else:
+                st.info(f"📋 담당 그룹: {my_groups[0]}")
+
         edited = st.data_editor(edit_target, num_rows="dynamic", use_container_width=True)
         
         if st.button("명단 저장"):
             if is_admin:
                 save_data("members", edited)
             else:
-                # 리더는 자기 것만 수정 -> 전체와 병합
-                my_grp = current_user["담당소그룹"]
-                other = df_members[df_members["소그룹"] != my_grp]
-                final = pd.concat([other, edited], ignore_index=True)
+                # [안전 로직]
+                # 1. 전체 데이터에서 '내 담당 그룹'에 속했던 사람들을 일단 뺍니다.
+                # (리더가 맡은 그룹이 아닌 사람들은 건드리지 않기 위해)
+                raw_groups = str(current_user["담당소그룹"])
+                my_groups = [g.strip() for g in raw_groups.split(",") if g.strip()]
+                
+                mask = df_members["소그룹"].isin(my_groups)
+                other_people = df_members[~mask]
+                
+                # 2. 내가 수정한 데이터(edited)와 합칩니다.
+                final = pd.concat([other_people, edited], ignore_index=True)
                 save_data("members", final)
-            st.success("업데이트 완료!")
+                
+            st.success("명단이 업데이트되었습니다!")
             st.rerun()
 
     # --- TAB 4: 계정 관리 ---
@@ -302,6 +326,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
