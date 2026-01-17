@@ -129,7 +129,19 @@ def main():
     with tabs[0]:
         st.subheader("모임 출석 확인")
         c1, c2 = st.columns(2)
-        check_date = c1.date_input("날짜", datetime.date.today())
+        
+        # [수정] 날짜 선택 및 요일 표시 기능
+        check_date = c1.date_input("날짜 선택", datetime.date.today())
+        
+        weekdays = ["(월)", "(화)", "(수)", "(목)", "(금)", "(토)", "(일)"]
+        korean_day = weekdays[check_date.weekday()]
+        
+        # 요일 표출 (일요일은 빨간색 강조)
+        if korean_day == "(일)":
+            c1.markdown(f":red[**오늘은 {korean_day}요일 입니다.**]") 
+        else:
+            c1.caption(f"선택한 날짜는 **{korean_day}요일** 입니다.")
+
         meeting_name = c2.selectbox("모임", ["주일 1부", "주일 2부", "주일 오후", "수요예배", "금요철야", "새벽예배"])
 
         all_groups = sorted(df_members["소그룹"].unique()) if not df_members.empty else []
@@ -246,4 +258,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
