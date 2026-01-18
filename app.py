@@ -8,7 +8,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 SHEET_NAME = "교회출석데이터"
 
 # 페이지 기본 설정
-st.set_page_config(page_title="사랑의교회", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_state="collapsed")
 
 # --- 구글 시트 연결 함수 ---
 @st.cache_resource
@@ -324,3 +324,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
