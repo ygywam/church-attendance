@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import calendar # [추가] 달력 기능을 위해 필요
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -45,7 +46,6 @@ def load_data(sheet_name):
     data = ws.get_all_records()
     
     if not data:
-        # 빈 데이터프레임 생성 (구조 유지)
         if sheet_name == "members":
             return pd.DataFrame(columns=["이름", "성별", "생일", "전화번호", "주소", "가족ID", "소그룹", "비고"])
         elif sheet_name == "attendance_log":
@@ -67,16 +67,81 @@ def save_data(sheet_name, df):
 
 # --- 날짜 관련 헬퍼 함수 ---
 def get_week_range(date_obj):
-    """선택한 날짜가 포함된 일요일~토요일 범위를 반환"""
     idx = (date_obj.weekday() + 1) % 7
     start_sunday = date_obj - datetime.timedelta(days=idx)
     end_saturday = start_sunday + datetime.timedelta(days=6)
     return start_sunday, end_saturday
 
+# --- [신규 기능] 생일 달력 그리기 ---
+def draw_birthday_calendar(df_members):
+    today = datetime.date.today()
+    year = today.year
+    month = today.month
+
+    # 1. 생일 데이터 전처리 (월/일 추출)
+    birthdays = {} # { "5": ["홍길동(남)", "김철수(여)"], "15": ["최하늘(남)"] }
+    
+    if not df_members.empty:
+        for _, row in df_members.iterrows():
+            try:
+                # 입력 형식이 1986-05-02 든 1986.05.02 든 숫자만 뽑아서 처리
+                raw_birth = str(row["생일"]).replace(".", "-").replace("/", "-")
+                parts = raw_birth.split("-")
+                
+                if len(parts) >= 2: # 최소 월-일은 있어야 함
+                    b_month = int(parts[-2]) # 뒤에서 두번째가 월
+                    b_day = int(parts[-1])   # 맨 뒤가 일
+                    
+                    if b_month == month:
+                        if str(b_day) not in birthdays:
+                            birthdays[str(b_day)] = []
+                        birthdays[str(b_day)].append(f"{row['이름']}")
+            except:
+                continue # 날짜 형식이 이상하면 패스
+
+    # 2. 달력 그리기
+    cal = calendar.monthcalendar(year, month) # 주 단위 리스트 반환 [[0,0,1,2,3,4,5], ...]
+    
+    st.markdown(f"### 📅 {month}월 생일 달력")
+    
+    # 요일 헤더
+    cols = st.columns(7)
+    weeks_list = ["일", "월", "화", "수", "목", "금", "토"]
+    for i, day_name in enumerate(weeks_list):
+        if i == 0:
+            cols[i].markdown(f":red[**{day_name}**]")
+        elif i == 6:
+            cols[i].markdown(f":blue[**{day_name}**]")
+        else:
+            cols[i].markdown(f"**{day_name}**")
+
+    # 날짜 채우기
+    for week in cal:
+        cols = st.columns(7)
+        for i, day in enumerate(week):
+            with cols[i]:
+                if day == 0:
+                    st.write("") # 빈 날짜
+                else:
+                    # 날짜 표시 (오늘 날짜면 강조)
+                    if day == today.day:
+                        st.markdown(f"**:red[{day}]** 👈")
+                    else:
+                        st.markdown(f"**{day}**")
+                    
+                    # 생일자 표시
+                    if str(day) in birthdays:
+                        for person in birthdays[str(day)]:
+                            st.info(f"🎂{person}")
+
 # --- 로그인 시스템 ---
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
     st.session_state["user_info"] = None
+
+# [핵심 수정] 현재 보고 있는 탭(페이지)을 기억하는 변수
+if "current_view" not in st.session_state:
+    st.session_state["current_view"] = "🏠 홈"
 
 def login(username, password):
     df_users = load_data("users")
@@ -96,6 +161,7 @@ def login(username, password):
 def logout():
     st.session_state["logged_in"] = False
     st.session_state["user_info"] = None
+    st.session_state["current_view"] = "🏠 홈" # 로그아웃시 홈으로 초기화
     st.rerun()
 
 # --- 메인 앱 ---
@@ -122,72 +188,37 @@ def main():
         st.warning("👈 사이드바에서 로그인해주세요.")
         st.stop()
 
-    # 데이터 로드
+    # 데이터 로드 (st.spinner 제거하여 깜빡임 최소화)
     current_user = st.session_state["user_info"]
     is_admin = (current_user["역할"] == "admin")
     
-    with st.spinner('데이터를 불러오는 중입니다...'):
-        df_members = load_data("members")
-        df_att = load_data("attendance_log")
-        df_prayer = load_data("prayer_log")
+    # 데이터는 조용히 로드
+    df_members = load_data("members")
+    df_att = load_data("attendance_log")
+    df_prayer = load_data("prayer_log")
 
-    # 탭 구성
-    tabs_list = ["🏠 홈 (대시보드)", "📋 출석체크", "📊 통계", "🙏 기도제목", "👥 명단 관리"]
+    # [핵심 수정] 튕김 방지를 위한 메뉴 구성
+    # st.tabs 대신 st.radio를 가로로 배치하여 탭처럼 사용 (상태 유지 가능)
+    menu_options = ["🏠 홈", "📋 출석체크", "📊 통계", "🙏 기도제목", "👥 명단 관리"]
     if is_admin:
-        tabs_list.append("🔐 계정 관리")
-    
-    tabs = st.tabs(tabs_list)
+        menu_options.append("🔐 계정 관리")
 
-    # --- TAB 1: 홈 (대시보드 & 생일) ---
-    with tabs[0]:
-        st.subheader(f"🎉 {datetime.date.today().month}월 생일자 명단")
-        
-        if df_members.empty:
-            st.info("등록된 성도 데이터가 없습니다.")
-        else:
-            try:
-                # [수정] 원본 데이터를 더럽히지 않도록 복사본(temp_df)을 만들어서 계산
-                temp_df = df_members.copy()
-                
-                # 생일 데이터 처리 (YYYY-MM-DD 형식에서 월 추출)
-                temp_df["생일_월"] = temp_df["생일"].astype(str).apply(
-                    lambda x: x.split("-")[1] if "-" in x and len(x.split("-")) >= 2 else None
-                )
-                
-                current_month_str = str(datetime.date.today().month).zfill(2)
-                birthday_people = temp_df[temp_df["생일_월"] == current_month_str]
+    # 메뉴 선택 (key를 지정하여 선택 상태 유지)
+    selected_menu = st.radio("메뉴 이동", menu_options, horizontal=True, label_visibility="collapsed", key="main_nav_radio")
 
-                if not birthday_people.empty:
-                    # 일자별 정렬
-                    birthday_people["생일_일"] = birthday_people["생일"].apply(lambda x: x.split("-")[-1])
-                    birthday_people = birthday_people.sort_values("생일_일")
-                    
-                    # 카드 형태로 보여주기
-                    b_cols = st.columns(4)
-                    for idx, row in birthday_people.iterrows():
-                        with b_cols[idx % 4]:
-                            st.info(
-                                f"**{row['이름']}** ({row['성별']})\n\n"
-                                f"🎂 {int(row['생일_월'])}월 {int(row['생일_일'])}일\n\n"
-                                f"🏷️ {row['소그룹']}"
-                            )
-                else:
-                    st.write("이번 달 생일자가 없습니다.")
-            except Exception as e:
-                # 데이터 형식이 안 맞을 경우 에러 방지
-                st.warning("생일 정보 형식을 확인해주세요. (예: 1986-05-02)")
+    st.divider()
 
-        st.divider()
-        st.markdown("### 👋 환영합니다")
-        st.write(f"오늘 날짜: **{datetime.date.today().strftime('%Y년 %m월 %d일')}**")
-        st.write("상단 탭을 눌러 출석체크 및 관리를 진행해주세요.")
+    # --- TAB 1: 홈 (달력 대시보드) ---
+    if selected_menu == "🏠 홈":
+        st.subheader("이번 달 주요 일정")
+        # [신규] 달력 그리기 함수 호출
+        draw_birthday_calendar(df_members)
 
     # --- TAB 2: 출석체크 ---
-    with tabs[1]:
+    elif selected_menu == "📋 출석체크":
         st.subheader("모임 출석 확인")
         c1, c2 = st.columns(2)
         
-        # [Key 추가] 날짜 선택
         check_date = c1.date_input("날짜 선택", datetime.date.today(), key="att_date_picker")
         weekdays = ["(월)", "(화)", "(수)", "(목)", "(금)", "(토)", "(일)"]
         korean_day = weekdays[check_date.weekday()]
@@ -198,21 +229,18 @@ def main():
             c1.caption(f"선택한 날짜는 **{korean_day}요일** 입니다.")
 
         meeting_list = ["주일 1부", "주일 2부", "주일 오후", "소그룹 모임", "수요예배", "금요철야", "새벽기도"]
-        # [Key 추가] 모임 선택
         meeting_name = c2.selectbox("모임", meeting_list, key="att_meeting_select")
 
         # 소그룹 선택 로직
         all_groups = sorted(df_members["소그룹"].unique()) if not df_members.empty else []
         
         if is_admin:
-            # [Key 추가] 관리자용 그룹 선택
             selected_group = st.selectbox("소그룹 (관리자)", ["전체 보기"] + list(all_groups), key="att_group_admin")
         else:
             raw_groups = str(current_user["담당소그룹"])
             my_groups = [g.strip() for g in raw_groups.split(",") if g.strip()]
             
             if len(my_groups) > 1:
-                # [Key 추가] 리더용 그룹 선택
                 selected_group = st.selectbox("📌 관리할 소그룹을 선택하세요", my_groups, key="att_group_leader")
             elif len(my_groups) == 1:
                 selected_group = my_groups[0]
@@ -244,7 +272,6 @@ def main():
                     is_checked = name in attended_names
                     status_dict[name] = cols[idx % 3].checkbox(name, value=is_checked, key=f"chk_{idx}_{name}")
                 
-                # [Key 추가] 저장 버튼
                 if st.form_submit_button("저장하기", use_container_width=True):
                     mask = (
                         (df_att["날짜"] == str(check_date)) & 
@@ -266,8 +293,8 @@ def main():
                     st.success(f"{selected_group} 출석이 저장되었습니다!")
                     st.rerun()
 
-    # --- TAB 3: 통계 (주간 리포트) ---
-    with tabs[2]:
+    # --- TAB 3: 통계 ---
+    elif selected_menu == "📊 통계":
         st.subheader("📊 주간 사역 통계")
         
         if df_att.empty:
@@ -277,20 +304,17 @@ def main():
             
             col_stat1, col_stat2 = st.columns(2)
             
-            # [Key 추가] 통계 날짜 선택
-            stat_date = col_stat1.date_input("기준 날짜 선택 (해당 주간을 조회)", datetime.date.today(), key="stat_date_picker")
+            stat_date = col_stat1.date_input("기준 날짜 선택", datetime.date.today(), key="stat_date_picker")
             start_sun, end_sat = get_week_range(stat_date)
             col_stat1.caption(f"📅 조회 기간: {start_sun.strftime('%m/%d')}(일) ~ {end_sat.strftime('%m/%d')}(토)")
 
             if is_admin:
                 all_grps = sorted(df_att["소그룹"].unique())
-                # [Key 추가] 통계 그룹 선택 (관리자)
                 stat_group = col_stat2.selectbox("조회할 소그룹", ["전체 합계"] + all_grps, key="stat_group_admin")
             else:
                 raw_groups = str(current_user["담당소그룹"])
                 my_groups = [g.strip() for g in raw_groups.split(",") if g.strip()]
                 if len(my_groups) > 1:
-                    # [Key 추가] 통계 그룹 선택 (리더)
                     stat_group = col_stat2.selectbox("소그룹 선택", my_groups, key="stat_group_leader")
                 else:
                     stat_group = my_groups[0]
@@ -330,18 +354,16 @@ def main():
                 st.dataframe(member_rank, use_container_width=True)
 
     # --- TAB 4: 기도제목 ---
-    with tabs[3]:
+    elif selected_menu == "🙏 기도제목":
         st.subheader("🙏 소그룹원 기도제목 관리")
         
         if is_admin:
             grp_list = sorted(df_members["소그룹"].unique())
-            # [Key 추가] 기도제목 그룹 선택 (관리자)
             p_group = st.selectbox("소그룹 선택 (기도제목)", grp_list, key="prayer_group_admin")
         else:
             raw_groups = str(current_user["담당소그룹"])
             my_groups = [g.strip() for g in raw_groups.split(",") if g.strip()]
             if len(my_groups) > 1:
-                # [Key 추가] 기도제목 그룹 선택 (리더) - 여기가 에러 원인이었음!
                 p_group = st.selectbox("소그룹 선택", my_groups, key="prayer_group_leader")
             elif len(my_groups) == 1:
                 p_group = my_groups[0]
@@ -353,17 +375,13 @@ def main():
             if not p_members:
                 st.warning("등록된 멤버가 없습니다.")
             else:
-                # [Key 추가] 멤버 선택
                 p_name = st.selectbox("이름을 선택하세요", p_members, key="prayer_member_select")
                 
                 with st.expander(f"✏️ {p_name}님 새 기도제목 입력하기", expanded=True):
                     with st.form("prayer_input"):
-                        # [Key 추가] 기도 날짜
                         p_date = st.date_input("기도 요청 날짜", datetime.date.today(), key="prayer_date_input")
-                        # [Key 추가] 기도 내용
                         p_content = st.text_area("기도제목 내용", height=100, placeholder="내용을 입력하세요...", key="prayer_content_input")
                         
-                        # [Key 추가] 저장 버튼
                         if st.form_submit_button("저장하기"):
                             if p_content.strip() == "":
                                 st.error("내용을 입력해주세요.")
@@ -391,7 +409,7 @@ def main():
                         st.info(f"**📅 {row['날짜']}**\n\n{row['내용']}")
 
     # --- TAB 5: 명단 관리 ---
-    with tabs[4]:
+    elif selected_menu == "👥 명단 관리":
         st.subheader("명단 관리")
         if is_admin:
             edit_target = df_members
@@ -405,10 +423,8 @@ def main():
             else:
                 st.info(f"📋 담당 그룹: {my_groups[0]}")
 
-        # [Key 추가] 에디터
         edited = st.data_editor(edit_target, num_rows="dynamic", use_container_width=True, key="member_editor")
         
-        # [Key 추가] 저장 버튼
         if st.button("명단 저장", key="member_save_btn"):
             if is_admin:
                 save_data("members", edited)
@@ -422,17 +438,15 @@ def main():
             st.success("명단이 업데이트되었습니다!")
             st.rerun()
 
-    # --- TAB 6: 계정 관리 (관리자만) ---
-    if is_admin:
-        with tabs[5]:
-            st.subheader("계정 관리")
-            df_users = load_data("users")
-            edited_users = st.data_editor(df_users, num_rows="dynamic", use_container_width=True, key="user_editor")
-            if st.button("계정 저장", key="user_save_btn"):
-                save_data("users", edited_users)
-                st.success("계정 정보 저장됨")
-                st.rerun()
+    # --- TAB 6: 계정 관리 ---
+    elif selected_menu == "🔐 계정 관리" and is_admin:
+        st.subheader("계정 관리")
+        df_users = load_data("users")
+        edited_users = st.data_editor(df_users, num_rows="dynamic", use_container_width=True, key="user_editor")
+        if st.button("계정 저장", key="user_save_btn"):
+            save_data("users", edited_users)
+            st.success("계정 정보 저장됨")
+            st.rerun()
 
 if __name__ == "__main__":
     main()
-
