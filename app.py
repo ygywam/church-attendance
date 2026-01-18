@@ -3,7 +3,7 @@ import pandas as pd
 import datetime
 import calendar
 import gspread
-import extra_streamlit_components as stx # [설치필요] 쿠키 관리를 위한 라이브러리
+import extra_streamlit_components as stx # [설치필요] requirements.txt에 추가하셨죠?
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- [설정] 구글 시트 파일 이름 ---
@@ -149,13 +149,9 @@ def draw_birthday_calendar(df_members):
                         for person in birthdays[str(day)]:
                             st.info(f"🎂{person}")
 
-# --- [핵심] 쿠키 매니저 초기화 ---
-# 이 함수는 쿠키를 읽고 쓰는 관리자를 만듭니다.
-@st.cache_resource(experimental_allow_widgets=True)
-def get_cookie_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_cookie_manager()
+# --- [핵심 수정] 쿠키 매니저 초기화 ---
+# 에러가 나던 캐싱 부분(@st.cache_resource)을 삭제했습니다.
+cookie_manager = stx.CookieManager()
 
 # --- 로그인 시스템 ---
 if "logged_in" not in st.session_state:
