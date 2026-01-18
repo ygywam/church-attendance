@@ -135,6 +135,11 @@ def main():
     # 1. 쿠키 매니저 초기화
     cookie_manager = stx.CookieManager(key="church_cookies")
     
+    # [핵심 수정] 오류 방지를 위해 주요 변수들을 맨 처음에 초기화합니다.
+    df_stat = pd.DataFrame()
+    target = pd.DataFrame()
+    t_list = pd.DataFrame()
+    
     st.title("⛪ 회정교회 출석체크 시스템")
 
     if "logged_in" not in st.session_state:
@@ -273,15 +278,12 @@ def main():
                     st.success("저장 완료!")
                     st.rerun()
 
-    # 3. 통계 (에러 해결: 변수 초기화 추가)
+    # 3. 통계 (에러 해결 완료)
     elif selected_menu == "📊 통계":
         st.subheader("📊 주간 사역 통계")
-        
-        # [안전장치] 변수 미리 선언 (UnboundLocalError 방지)
-        df_stat = pd.DataFrame() 
-        
         if df_att.empty: st.info("데이터가 없습니다.")
         else:
+            # [수정] 원본 보호를 위해 복사본 사용
             df_stat = df_att.copy()
             df_stat["날짜"] = pd.to_datetime(df_stat["날짜"], errors='coerce')
             
@@ -312,9 +314,6 @@ def main():
                 st.divider()
                 st.markdown(f"**📋 {s_grp} 명단 현황**")
                 
-                # [안전장치] 명단 변수 초기화
-                t_list = pd.DataFrame()
-
                 if s_grp == "전체 합계":
                     if is_admin: t_list = df_members.copy()
                     else:
@@ -324,6 +323,7 @@ def main():
                     t_list = df_members[df_members["소그룹"] == s_grp].copy()
 
                 if not t_list.empty:
+                    # [가족별 보기 기능 유지]
                     view_by_family = st.checkbox("👨‍👩‍👧‍👦 가족별로 묶어보기", key="stat_fam_view")
                     
                     att_names = w_df["이름"].unique()
@@ -376,13 +376,10 @@ def main():
                 for i, r in hist.iterrows():
                     st.info(f"**{r['날짜']}**: {r['내용']}")
 
-    # 5. 명단 관리 (에러 해결: 변수 초기화 추가)
+    # 5. 명단 관리 (에러 해결 완료)
     elif selected_menu == "👥 명단 관리":
         st.subheader("명단 관리")
         
-        # [안전장치] 변수 미리 선언
-        target = pd.DataFrame()
-
         if is_admin:
             target = df_members
         else:
@@ -391,6 +388,7 @@ def main():
             st.info(f"담당: {', '.join(my_gs)}")
 
         col_opt1, col_opt2 = st.columns([1, 3])
+        # [가족 기능 유지]
         use_fam_view = col_opt1.checkbox("👨‍👩‍👧‍👦 가족끼리 묶어보기", value=True, key="mem_fam_chk")
         
         if use_fam_view and not target.empty:
