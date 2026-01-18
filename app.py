@@ -13,76 +13,70 @@ SHEET_NAME = "교회출석데이터"
 # 페이지 기본 설정
 st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_state="collapsed")
 
-# --- [스타일] 반응형 타이틀 & 달력 Grid 적용 ---
+# --- [스타일] CSS Grid 적용 (달력 및 UI 스타일) ---
 st.markdown("""
     <style>
     /* 기본 폰트 설정 */
     html, body, p, li, .stMarkdown { font-size: 18px !important; }
     
-    /* [수정] 제목 스타일: PC에서는 아주 크게, 가운데 정렬 */
+    /* 제목 스타일 */
     h1 { 
-        font-size: 46px !important;  /* PC용 큰 글씨 */
+        font-size: 46px !important; 
         text-align: center; 
         word-break: keep-all; 
         margin-bottom: 30px !important;
         font-weight: 800 !important;
     }
     
-    /* 체크박스, 버튼 등 UI 크기 조절 */
+    /* UI 요소 크기 조절 */
     .stCheckbox label p { font-size: 20px !important; font-weight: bold; }
     .stButton button { font-size: 20px !important; font-weight: bold; width: 100%; }
     
-    /* === 달력 전용 CSS Grid 스타일 (깨짐 방지) === */
+    /* 공지사항 박스 스타일 */
+    .notice-box {
+        background-color: #fff3cd;
+        border: 2px solid #ffeeba;
+        color: #856404;
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        text-align: center;
+        font-size: 20px;
+        font-weight: bold;
+        line-height: 1.5;
+        word-break: keep-all;
+    }
+
+    /* === 달력 전용 CSS Grid === */
     .calendar-container {
         display: grid;
-        grid-template-columns: repeat(7, 1fr); /* 무조건 7등분 */
+        grid-template-columns: repeat(7, 1fr);
         gap: 3px; 
         width: 100%;
     }
-    
     .cal-header {
-        text-align: center;
-        font-weight: bold;
-        padding: 5px 0;
-        font-size: 16px;
+        text-align: center; font-weight: bold; padding: 5px 0; font-size: 16px;
     }
-    
     .cal-cell {
-        background-color: #f9f9f9;
-        border: 1px solid #eee;
-        min-height: 70px;
-        padding: 4px;
-        text-align: center;
-        font-size: 15px;
-        border-radius: 8px;
+        background-color: #f9f9f9; border: 1px solid #eee; min-height: 70px;
+        padding: 4px; text-align: center; font-size: 15px; border-radius: 8px;
     }
-    
     .today {
-        border: 2px solid #ff4b4b !important;
-        background-color: #fff0f0 !important;
+        border: 2px solid #ff4b4b !important; background-color: #fff0f0 !important;
     }
-    
     .b-badge {
-        display: block;
-        background-color: #e6f3ff;
-        color: #0068c9;
-        font-size: 12px;
-        border-radius: 4px;
-        padding: 2px;
-        margin-top: 4px;
-        word-break: keep-all;
-        line-height: 1.2;
-        font-weight: bold;
+        display: block; background-color: #e6f3ff; color: #0068c9;
+        font-size: 12px; border-radius: 4px; padding: 2px; margin-top: 4px;
+        word-break: keep-all; line-height: 1.2; font-weight: bold;
     }
 
-    /* [반응형] 모바일 전용 스타일 (화면 폭 600px 이하) */
+    /* 모바일 반응형 */
     @media only screen and (max-width: 600px) {
-        /* 모바일에서는 제목 크기를 적당히 줄임 */
         h1 { font-size: 28px !important; margin-bottom: 15px !important; }
-        
         .cal-header { font-size: 14px; }
         .cal-cell { min-height: 55px; font-size: 13px; padding: 2px; }
         .b-badge { font-size: 11px; margin-top: 2px; }
+        .notice-box { font-size: 16px; padding: 10px; }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -116,7 +110,7 @@ def get_worksheet(worksheet_name):
         st.error("⚠️ 접속량이 많아 일시적으로 지연됩니다. 잠시 후 다시 시도해주세요.")
         return None
 
-# --- 2. 데이터 읽기/쓰기 함수 ---
+# --- 2. 데이터 읽기/쓰기 함수 (공지사항, 사역보고 추가) ---
 @st.cache_data(ttl=60)
 def load_data(sheet_name):
     ws = get_worksheet(sheet_name)
@@ -131,6 +125,11 @@ def load_data(sheet_name):
             return pd.DataFrame(columns=["아이디", "비밀번호", "이름", "역할", "담당소그룹"])
         elif sheet_name == "prayer_log":
             return pd.DataFrame(columns=["날짜", "이름", "소그룹", "내용", "작성자"])
+        elif sheet_name == "notices": # [추가] 공지사항 시트
+            return pd.DataFrame(columns=["날짜", "내용", "작성자"])
+        elif sheet_name == "reports": # [추가] 사역보고 시트
+            return pd.DataFrame(columns=["날짜", "작성자", "내용"])
+            
     return pd.DataFrame(data).astype(str)
 
 def save_data(sheet_name, df):
@@ -147,6 +146,45 @@ def get_week_range(date_obj):
     start_sunday = date_obj - datetime.timedelta(days=idx)
     end_saturday = start_sunday + datetime.timedelta(days=6)
     return start_sunday, end_saturday
+
+# [기능추가] 공지사항 섹션 그리기
+def draw_notice_section(is_admin, current_user_name):
+    df_notices = load_data("notices")
+    
+    # 1. 공지사항 표시 (가장 최근 것 1개)
+    if not df_notices.empty:
+        # 날짜 내림차순 정렬 후 첫 번째 가져오기
+        latest_notice = df_notices.sort_values(by="날짜", ascending=False).iloc[0]
+        notice_content = latest_notice["내용"]
+        notice_date = latest_notice["날짜"]
+        
+        # HTML로 예쁜 박스 그리기
+        st.markdown(f"""
+        <div class="notice-box">
+            📢 <b>공지사항 ({notice_date})</b><br><br>
+            {notice_content}
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        if is_admin:
+            st.info("등록된 공지사항이 없습니다. 아래에서 등록해주세요.")
+
+    # 2. 관리자용 공지 등록 폼
+    if is_admin:
+        with st.expander("📢 공지사항 등록/수정 (관리자 전용)"):
+            with st.form("notice_form"):
+                n_date = st.date_input("공지 날짜", datetime.date.today())
+                n_content = st.text_area("공지 내용 (줄바꿈 가능)", height=100)
+                if st.form_submit_button("공지 올리기"):
+                    new_notice = pd.DataFrame([{
+                        "날짜": str(n_date),
+                        "내용": n_content,
+                        "작성자": current_user_name
+                    }])
+                    # 기존 공지 유지하고 쌓을지, 덮어쓸지 결정. 여기선 쌓는 방식(히스토리 유지)
+                    save_data("notices", pd.concat([df_notices, new_notice], ignore_index=True))
+                    st.success("공지사항이 등록되었습니다.")
+                    st.rerun()
 
 def draw_birthday_calendar(df_members):
     today = datetime.date.today()
@@ -170,7 +208,6 @@ def draw_birthday_calendar(df_members):
     st.markdown(f"### 📅 {month}월 생일 달력")
 
     html_code = '<div class="calendar-container">'
-    
     weeks = ["일", "월", "화", "수", "목", "금", "토"]
     for i, w in enumerate(weeks):
         color = "red" if i==0 else "blue" if i==6 else "#333"
@@ -184,20 +221,16 @@ def draw_birthday_calendar(df_members):
             else:
                 is_today = "today" if day == today.day else ""
                 day_style = "color: red;" if day == today.day else ""
-                
                 html_code += f'<div class="cal-cell {is_today}">'
                 html_code += f'<div style="{day_style} font-weight:bold;">{day}</div>'
-                
                 if str(day) in birthdays:
                     for p in birthdays[str(day)]:
                         html_code += f'<span class="b-badge">🎂{p}</span>'
-                
                 html_code += '</div>'
-
     html_code += '</div>'
     st.markdown(html_code, unsafe_allow_html=True)
 
-# 로그인 함수
+# 로그인/로그아웃 함수
 def process_login(username, password, cookie_manager):
     df_users = load_data("users")
     matched = df_users[(df_users["아이디"] == username) & (df_users["비밀번호"] == password)]
@@ -221,20 +254,18 @@ def process_logout(cookie_manager):
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
     
-    # 변수 초기화 (에러 방지)
+    # 변수 초기화
     df_stat = pd.DataFrame()
     target = pd.DataFrame()
     t_list = pd.DataFrame()
     w_df = pd.DataFrame()
 
-    # [수정] 이모티콘 추가 & 제목 출력
     st.title("⛪ 회정교회 출석체크 시스템")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
         st.session_state["user_info"] = None
 
-    # 자동 로그인
     if not st.session_state["logged_in"]:
         time.sleep(0.5)
         cookie_id = cookie_manager.get(cookie="church_user_id")
@@ -268,13 +299,16 @@ def main():
 
     # 데이터 로드
     current_user = st.session_state["user_info"]
+    current_user_name = current_user["이름"]
     is_admin = (current_user["역할"] == "admin")
     
     df_members = load_data("members")
     df_att = load_data("attendance_log")
     df_prayer = load_data("prayer_log")
+    df_reports = load_data("reports")
 
-    menu_list = ["🏠 홈", "📋 출석체크", "📊 통계", "🙏 기도제목", "👥 명단 관리"]
+    # 메뉴 구성 (사역 보고 탭 추가)
+    menu_list = ["🏠 홈", "📋 출석체크", "📊 통계", "🙏 기도제목", "📨 사역 보고", "👥 명단 관리"]
     if is_admin: menu_list.append("🔐 계정 관리")
     
     selected_menu = st.radio("메뉴 이동", menu_list, horizontal=True, label_visibility="collapsed", key="main_nav")
@@ -282,8 +316,11 @@ def main():
 
     # --- 탭별 기능 ---
 
-    # 1. 홈
+    # 1. 홈 (공지사항 + 달력)
     if selected_menu == "🏠 홈":
+        # [추가] 공지사항 섹션 (달력 위에 배치)
+        draw_notice_section(is_admin, current_user_name)
+        
         st.subheader("이번 달 주요 일정")
         draw_birthday_calendar(df_members)
 
@@ -347,7 +384,6 @@ def main():
         else:
             df_stat = df_att.copy()
             df_stat["날짜"] = pd.to_datetime(df_stat["날짜"], errors='coerce')
-            
             c1, c2 = st.columns(2)
             s_date = c1.date_input("기준 날짜", datetime.date.today(), key="stat_date")
             sun, sat = get_week_range(s_date)
@@ -370,7 +406,6 @@ def main():
                 cnts = w_df["모임명"].value_counts().reset_index()
                 cnts.columns = ["모임명", "인원"]
                 st.bar_chart(cnts.set_index("모임명"))
-                
                 st.divider()
                 st.markdown(f"**📋 {s_grp} 명단 현황**")
                 
@@ -384,7 +419,6 @@ def main():
 
                 if not t_list.empty:
                     view_by_family = st.checkbox("👨‍👩‍👧‍👦 가족별로 묶어보기", key="stat_fam_view")
-                    
                     att_names = w_df["이름"].unique()
                     t_list["정렬키"] = t_list["이름"].apply(lambda x: 0 if x in att_names else 1)
                     t_list["상태"] = t_list["정렬키"].apply(lambda x: "✅ 출석" if x == 0 else "❌ 결석")
@@ -399,10 +433,7 @@ def main():
                         disp_cols = ["이름", "상태", "소그룹", "전화번호"]
                     
                     final_cols = [c for c in disp_cols if c in t_list.columns]
-                    
-                    def highlight(row):
-                        return ['background-color: #ffe6e6' if row['상태']=='❌ 결석' else '' for _ in row]
-                    
+                    def highlight(row): return ['background-color: #ffe6e6' if row['상태']=='❌ 결석' else '' for _ in row]
                     st.dataframe(t_list[final_cols].style.apply(highlight, axis=1), use_container_width=True)
 
     # 4. 기도제목
@@ -429,14 +460,58 @@ def main():
                             save_data("prayer_log", pd.concat([df_prayer, new_p], ignore_index=True))
                             st.success("저장됨")
                             st.rerun()
-                
                 st.divider()
                 st.caption(f"{p_who}님의 히스토리")
                 hist = df_prayer[df_prayer["이름"]==p_who].sort_values("날짜", ascending=False)
                 for i, r in hist.iterrows():
                     st.info(f"**{r['날짜']}**: {r['내용']}")
 
-    # 5. 명단 관리
+    # 5. [신규기능] 사역 보고
+    elif selected_menu == "📨 사역 보고":
+        st.subheader("📨 소그룹 사역 보고")
+        st.caption("소그룹장님들의 건의사항이나 특이사항을 관리자에게 전달하는 공간입니다.")
+
+        # 1. 보고서 작성 (누구나 작성 가능)
+        with st.expander("📝 새 보고서 작성하기", expanded=True):
+            with st.form("report_form"):
+                r_date = st.date_input("작성일", datetime.date.today())
+                r_content = st.text_area("보고 내용 (특이사항, 건의사항 등)", height=150)
+                if st.form_submit_button("보고서 제출"):
+                    new_report = pd.DataFrame([{
+                        "날짜": str(r_date),
+                        "작성자": current_user_name,
+                        "내용": r_content
+                    }])
+                    save_data("reports", pd.concat([df_reports, new_report], ignore_index=True))
+                    st.success("보고서가 제출되었습니다.")
+                    st.rerun()
+
+        st.divider()
+
+        # 2. 보고서 조회 (관리자 vs 리더)
+        if is_admin:
+            st.markdown("### 📥 전체 사역 보고 리스트 (관리자용)")
+            if df_reports.empty:
+                st.info("제출된 보고서가 없습니다.")
+            else:
+                # 날짜 내림차순 정렬
+                reports_view = df_reports.sort_values(by="날짜", ascending=False)
+                for i, row in reports_view.iterrows():
+                    with st.container():
+                        st.markdown(f"**🗓️ {row['날짜']} | 👤 {row['작성자']}**")
+                        st.info(row['내용'])
+        else:
+            st.markdown(f"### 📂 {current_user_name}님의 보낸 보고 내역")
+            my_reports = df_reports[df_reports["작성자"] == current_user_name]
+            if my_reports.empty:
+                st.info("아직 제출한 보고서가 없습니다.")
+            else:
+                my_reports = my_reports.sort_values(by="날짜", ascending=False)
+                for i, row in my_reports.iterrows():
+                    st.text(f"📅 {row['날짜']}")
+                    st.info(row['내용'])
+
+    # 6. 명단 관리
     elif selected_menu == "👥 명단 관리":
         st.subheader("명단 관리")
         if is_admin: target = df_members
@@ -467,7 +542,7 @@ def main():
             st.success("저장 완료!")
             st.rerun()
 
-    # 6. 계정 관리
+    # 7. 계정 관리
     elif selected_menu == "🔐 계정 관리" and is_admin:
         st.subheader("계정 관리")
         u_df = load_data("users")
