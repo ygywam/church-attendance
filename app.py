@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import datetime
 import calendar
+import time # 시간 지연을 위해 추가
 import gspread
-import extra_streamlit_components as stx # [설치필요] requirements.txt에 추가하셨죠?
+import extra_streamlit_components as stx
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- [설정] 구글 시트 파일 이름 ---
@@ -12,7 +13,7 @@ SHEET_NAME = "교회출석데이터"
 # 페이지 기본 설정
 st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_state="collapsed")
 
-# --- [스타일 추가] 어르신들을 위한 큰 글씨 적용 ---
+# --- [스타일 추가] ---
 st.markdown("""
     <style>
     html, body, p, li, .stMarkdown { font-size: 20px !important; }
@@ -149,82 +150,85 @@ def draw_birthday_calendar(df_members):
                         for person in birthdays[str(day)]:
                             st.info(f"🎂{person}")
 
-# --- [핵심 수정] 쿠키 매니저 초기화 ---
-# 에러가 나던 캐싱 부분(@st.cache_resource)을 삭제했습니다.
-cookie_manager = stx.CookieManager()
-
-# --- 로그인 시스템 ---
-if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = False
-    st.session_state["user_info"] = None
-
-# [자동 로그인 로직]
-# 1. 쿠키가 있는지 확인합니다.
-cookie_user_id = cookie_manager.get(cookie="church_user_id")
-
-# 2. 로그인이 안 된 상태인데, 쿠키에 아이디가 남아있다면?
-if not st.session_state["logged_in"] and cookie_user_id:
-    df_users = load_data("users")
-    # 쿠키에 저장된 아이디로 유저 정보를 찾습니다.
-    matched_cookie_user = df_users[df_users["아이디"] == cookie_user_id]
-    
-    if not matched_cookie_user.empty:
-        # 정보가 맞으면 로그인 처리!
-        st.session_state["logged_in"] = True
-        st.session_state["user_info"] = matched_cookie_user.iloc[0].to_dict()
-        # (주의: 여기서 rerun을 하면 무한로딩 될 수 있으니 그냥 통과시킴)
-
-if "current_view" not in st.session_state:
-    st.session_state["current_view"] = "🏠 홈"
-
-def login(username, password):
-    df_users = load_data("users")
-    if df_users.empty:
-        st.error("사용자 데이터가 없습니다.")
-        return
-
-    matched = df_users[(df_users["아이디"] == username) & (df_users["비밀번호"] == password)]
-    
-    if not matched.empty:
-        st.session_state["logged_in"] = True
-        st.session_state["user_info"] = matched.iloc[0].to_dict()
-        
-        # [핵심] 로그인 성공 시 쿠키 굽기 (30일 동안 유지)
-        cookie_manager.set("church_user_id", username, expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
-        
-        st.rerun()
-    else:
-        st.error("아이디 또는 비밀번호가 잘못되었습니다.")
-
-def logout():
-    st.session_state["logged_in"] = False
-    st.session_state["user_info"] = None
-    st.session_state["current_view"] = "🏠 홈"
-    
-    # [핵심] 로그아웃 시 쿠키 삭제
-    cookie_manager.delete("church_user_id")
-    
-    st.rerun()
-
 # --- 메인 앱 ---
 def main():
+    # [핵심 1] 쿠키 매니저는 항상 main 함수 맨 처음에 선언!
+    # (고유 key를 주어 충돌 방지)
+    cookie_manager = stx.CookieManager(key="church_cookies")
+
     st.title("⛪ 회정교회 출석체크 시스템")
 
+    # 세션 상태 초기화
+    if "logged_in" not in st.session_state:
+        st.session_state["logged_in"] = False
+        st.session_state["user_info"] = None
+    
+    if "current_view" not in st.session_state:
+        st.session_state["current_view"] = "🏠 홈"
+
+    # [핵심 2] 자동 로그인 로직 (화면 그리기 전 체크)
+    if not st.session_state["logged_in"]:
+        # 쿠키 가져오기
+        cookie_user_id = cookie_manager.get(cookie="church_user_id")
+        
+        if cookie_user_id:
+            df_users = load_data("users")
+            matched_cookie_user = df_users[df_users["아이디"] == cookie_user_id]
+            
+            if not matched_cookie_user.empty:
+                st.session_state["logged_in"] = True
+                st.session_state["user_info"] = matched_cookie_user.iloc[0].to_dict()
+                # [중요] 로그인 상태가 되었으니 화면을 즉시 새로고침하여 사이드바를 갱신
+                st.rerun()
+
+    # --- 로그인/로그아웃 함수 (main 안에 배치하여 manager 접근) ---
+    def login_process(username, password):
+        df_users = load_data("users")
+        if df_users.empty:
+            st.error("사용자 데이터가 없습니다.")
+            return
+
+        matched = df_users[(df_users["아이디"] == username) & (df_users["비밀번호"] == password)]
+        
+        if not matched.empty:
+            st.session_state["logged_in"] = True
+            st.session_state["user_info"] = matched.iloc[0].to_dict()
+            
+            # 쿠키 굽기 (30일)
+            expires = datetime.datetime.now() + datetime.timedelta(days=30)
+            cookie_manager.set("church_user_id", username, expires_at=expires)
+            
+            st.rerun()
+        else:
+            st.error("아이디 또는 비밀번호가 잘못되었습니다.")
+
+    def logout_process():
+        st.session_state["logged_in"] = False
+        st.session_state["user_info"] = None
+        st.session_state["current_view"] = "🏠 홈"
+        
+        # 쿠키 삭제
+        cookie_manager.delete("church_user_id")
+        
+        st.rerun()
+
+    # --- 사이드바 UI ---
     with st.sidebar:
         st.header("로그인")
         if not st.session_state["logged_in"]:
             input_id = st.text_input("아이디", key="login_id")
             input_pw = st.text_input("비밀번호", type="password", key="login_pw")
             if st.button("로그인", key="login_btn"):
-                login(input_id, input_pw)
+                login_process(input_id, input_pw)
             st.caption("※ 초기 설정: admin / 1234")
         else:
             user = st.session_state["user_info"]
             st.success(f"환영합니다! {user['이름']}님")
             st.caption(f"권한: {user['역할']}")
             if st.button("로그아웃", key="logout_btn"):
-                logout()
+                logout_process()
 
+    # --- 메인 화면 로직 ---
     if not st.session_state["logged_in"]:
         st.warning("👈 사이드바에서 로그인해주세요.")
         st.stop()
