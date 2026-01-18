@@ -1,6 +1,83 @@
+import streamlit as st
+import pandas as pd
+import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
+# --- [설정] 구글 시트 파일 이름 ---
+# (주의: 구글 시트 파일 제목과 똑같아야 합니다!)
+SHEET_NAME = "교회출석데이터"
+
+# 페이지 기본 설정
+st.set_page_config(page_title="사랑의교회", layout="wide", initial_sidebar_state="collapsed")
+
+# --- 구글 시트 연결 함수 ---
+@st.cache_resource
+def get_google_sheet_client():
+    creds_dict = st.secrets["gcp_service_account"]
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
+    return client
+
+def get_worksheet(worksheet_name):
+    client = get_google_sheet_client()
+    sheet = client.open(SHEET_NAME)
+    try:
+        return sheet.worksheet(worksheet_name)
+    except:
+        return sheet.add_worksheet(title=worksheet_name, rows=100, cols=20)
+
+# --- 데이터 읽기/쓰기 함수 (기도제목 기능 추가됨) ---
+def load_data(sheet_name):
+    ws = get_worksheet(sheet_name)
+    data = ws.get_all_records()
+    
+    if not data:
+        # 데이터가 없을 때 기본 컬럼 틀 만들어주기
+        if sheet_name == "members":
+            return pd.DataFrame(columns=["이름", "성별", "생일", "전화번호", "주소", "가족ID", "소그룹", "비고"])
+        elif sheet_name == "attendance_log":
+            return pd.DataFrame(columns=["날짜", "모임명", "이름", "소그룹", "출석여부"])
+        elif sheet_name == "users":
+            return pd.DataFrame(columns=["아이디", "비밀번호", "이름", "역할", "담당소그룹"])
+        elif sheet_name == "prayer_log":  # [중요] 기도제목 탭 정의 추가
+            return pd.DataFrame(columns=["날짜", "이름", "소그룹", "내용", "작성자"])
+    
+    df = pd.DataFrame(data)
+    return df.astype(str)
+
+def save_data(sheet_name, df):
+    ws = get_worksheet(sheet_name)
+    ws.clear()
+    ws.append_row(df.columns.tolist())
+    ws.update(range_name='A2', values=df.values.tolist())
+
+# --- 로그인 시스템 ---
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+    st.session_state["user_info"] = None
+
+def login(username, password):
+    df_users = load_data("users")
+    matched = df_users[(df_users["아이디"] == username) & (df_users["비밀번호"] == password)]
+    
+    if not matched.empty:
+        st.session_state["logged_in"] = True
+        st.session_state["user_info"] = matched.iloc[0].to_dict()
+        st.rerun()
+    else:
+        st.error("아이디 또는 비밀번호가 잘못되었습니다.")
+
+def logout():
+    st.session_state["logged_in"] = False
+    st.session_state["user_info"] = None
+    st.rerun()
+
 # --- 메인 앱 ---
 def main():
-    st.title(f"⛪ 회정교회 출석체크 시스템")
+    # [수정] 화면 상단 제목
+    st.title("⛪ 사랑의교회 출석체크 시스템")
 
     # 사이드바 로그인
     with st.sidebar:
@@ -28,9 +105,9 @@ def main():
     
     df_members = load_data("members")
     df_att = load_data("attendance_log")
-    df_prayer = load_data("prayer_log") # [추가] 기도제목 데이터 로드
+    df_prayer = load_data("prayer_log") # 기도제목 로드
 
-    # 탭 구성 (기도제목 탭 추가됨)
+    # 탭 구성
     tabs_list = ["📋 출석체크", "📊 통계", "🙏 기도제목", "👥 명단 관리"]
     if is_admin:
         tabs_list.append("🔐 계정 관리")
@@ -53,7 +130,7 @@ def main():
 
         meeting_name = c2.selectbox("모임", ["주일 1부", "주일 2부", "주일 오후", "수요예배", "금요철야", "새벽예배"])
 
-        # 소그룹 선택 로직
+        # 다중 소그룹 선택 로직
         all_groups = sorted(df_members["소그룹"].unique()) if not df_members.empty else []
         
         if is_admin:
@@ -95,6 +172,7 @@ def main():
                     status_dict[name] = cols[idx % 3].checkbox(name, value=is_checked)
                 
                 if st.form_submit_button("저장하기", use_container_width=True):
+                    # 해당 그룹/날짜 데이터만 갱신
                     mask = (
                         (df_att["날짜"] == str(check_date)) & 
                         (df_att["모임명"] == meeting_name) & 
@@ -149,13 +227,16 @@ def main():
                 if search_person != "선택해주세요":
                     person_history = df_att[df_att["이름"] == search_person]
                     history_summary = person_history.groupby(["연도", "소그룹"])["출석여부"].count().reset_index()
+                    history_summary.columns = ["연도", "당시 소그룹", "출석 횟수"]
                     st.table(history_summary)
+                    
+                    with st.expander("상세 기록 보기"):
+                         st.dataframe(person_history[["날짜", "모임명", "소그룹"]].sort_values("날짜", ascending=False), use_container_width=True)
 
-    # --- TAB 3: 기도제목 (새로 추가된 기능!) ---
+    # --- TAB 3: 기도제목 ---
     with tabs[2]:
         st.subheader("🙏 소그룹원 기도제목 관리")
         
-        # 1. 대상 선택 (소그룹 -> 멤버)
         if is_admin:
             grp_list = sorted(df_members["소그룹"].unique())
             p_group = st.selectbox("소그룹 선택 (기도제목)", grp_list)
@@ -170,93 +251,16 @@ def main():
                 p_group = None
         
         if p_group:
-            # 해당 소그룹 멤버 목록
             p_members = df_members[df_members["소그룹"] == p_group]["이름"].tolist()
             if not p_members:
                 st.warning("등록된 멤버가 없습니다.")
             else:
                 p_name = st.selectbox("이름을 선택하세요", p_members)
                 
-                # --- 입력 폼 ---
                 with st.expander(f"✏️ {p_name}님 새 기도제목 입력하기", expanded=True):
                     with st.form("prayer_input"):
                         p_date = st.date_input("기도 요청 날짜", datetime.date.today())
-                        p_content = st.text_area("기도제목 내용", height=100, placeholder="예: 이번주 면접이 있습니다. 평안한 마음 주시길...")
+                        p_content = st.text_area("기도제목 내용", height=100, placeholder="내용을 입력하세요...")
                         
                         if st.form_submit_button("저장하기"):
-                            if p_content.strip() == "":
-                                st.error("내용을 입력해주세요.")
-                            else:
-                                new_prayer = pd.DataFrame([{
-                                    "날짜": str(p_date),
-                                    "이름": p_name,
-                                    "소그룹": p_group,
-                                    "내용": p_content,
-                                    "작성자": current_user["이름"]
-                                }])
-                                # 기존 데이터에 추가하여 저장 (가장 아래에 추가됨)
-                                save_data("prayer_log", pd.concat([df_prayer, new_prayer], ignore_index=True))
-                                st.success("기도제목이 저장되었습니다!")
-                                st.rerun()
-
-                st.divider()
-
-                # --- 기록 조회 ---
-                st.markdown(f"**📖 {p_name}님의 기도제목 히스토리**")
-                
-                # 해당 멤버의 기도제목만 필터링 (최신순 정렬)
-                my_prayers = df_prayer[df_prayer["이름"] == p_name]
-                
-                if my_prayers.empty:
-                    st.info("아직 등록된 기도제목이 없습니다.")
-                else:
-                    # 날짜 기준 내림차순 정렬 (최신이 위로)
-                    my_prayers = my_prayers.sort_values(by="날짜", ascending=False)
-                    
-                    for idx, row in my_prayers.iterrows():
-                        with st.container():
-                            # 카드 형태로 예쁘게 보여주기
-                            st.markdown(f"""
-                            > **📅 {row['날짜']}** > {row['내용']}
-                            """)
-
-    # --- TAB 4: 명단 관리 ---
-    with tabs[3]:
-        st.subheader("명단 관리")
-        if is_admin:
-            edit_target = df_members
-        else:
-            raw_groups = str(current_user["담당소그룹"])
-            my_groups = [g.strip() for g in raw_groups.split(",") if g.strip()]
-            edit_target = df_members[df_members["소그룹"].isin(my_groups)]
-            
-            if len(my_groups) > 1:
-                st.info(f"📋 담당 그룹({len(my_groups)}개): {', '.join(my_groups)} 명단을 통합 관리합니다.")
-            else:
-                st.info(f"📋 담당 그룹: {my_groups[0]}")
-
-        edited = st.data_editor(edit_target, num_rows="dynamic", use_container_width=True)
-        
-        if st.button("명단 저장"):
-            if is_admin:
-                save_data("members", edited)
-            else:
-                raw_groups = str(current_user["담당소그룹"])
-                my_groups = [g.strip() for g in raw_groups.split(",") if g.strip()]
-                mask = df_members["소그룹"].isin(my_groups)
-                other_people = df_members[~mask]
-                final = pd.concat([other_people, edited], ignore_index=True)
-                save_data("members", final)
-            st.success("명단이 업데이트되었습니다!")
-            st.rerun()
-
-    # --- TAB 5: 계정 관리 (관리자만) ---
-    if is_admin:
-        with tabs[4]:
-            st.subheader("계정 관리")
-            df_users = load_data("users")
-            edited_users = st.data_editor(df_users, num_rows="dynamic", use_container_width=True)
-            if st.button("계정 저장"):
-                save_data("users", edited_users)
-                st.success("계정 정보 저장됨")
-                st.rerun()
+                            if p_content.
