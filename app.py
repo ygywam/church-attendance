@@ -13,7 +13,7 @@ SHEET_NAME = "교회출석데이터"
 # 페이지 기본 설정
 st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_state="collapsed")
 
-# --- [스타일] CSS Grid 적용 (달력 및 UI 스타일) ---
+# --- [스타일] CSS 적용 ---
 st.markdown("""
     <style>
     /* 기본 폰트 설정 */
@@ -110,7 +110,7 @@ def get_worksheet(worksheet_name):
         st.error("⚠️ 접속량이 많아 일시적으로 지연됩니다. 잠시 후 다시 시도해주세요.")
         return None
 
-# --- 2. 데이터 읽기/쓰기 함수 (공지사항, 사역보고 추가) ---
+# --- 2. 데이터 읽기/쓰기 함수 ---
 @st.cache_data(ttl=60)
 def load_data(sheet_name):
     ws = get_worksheet(sheet_name)
@@ -125,9 +125,9 @@ def load_data(sheet_name):
             return pd.DataFrame(columns=["아이디", "비밀번호", "이름", "역할", "담당소그룹"])
         elif sheet_name == "prayer_log":
             return pd.DataFrame(columns=["날짜", "이름", "소그룹", "내용", "작성자"])
-        elif sheet_name == "notices": # [추가] 공지사항 시트
+        elif sheet_name == "notices":
             return pd.DataFrame(columns=["날짜", "내용", "작성자"])
-        elif sheet_name == "reports": # [추가] 사역보고 시트
+        elif sheet_name == "reports":
             return pd.DataFrame(columns=["날짜", "작성자", "내용"])
             
     return pd.DataFrame(data).astype(str)
@@ -147,45 +147,35 @@ def get_week_range(date_obj):
     end_saturday = start_sunday + datetime.timedelta(days=6)
     return start_sunday, end_saturday
 
-# [기능추가] 공지사항 섹션 그리기
+# 공지사항 그리기
 def draw_notice_section(is_admin, current_user_name):
     df_notices = load_data("notices")
     
-    # 1. 공지사항 표시 (가장 최근 것 1개)
     if not df_notices.empty:
-        # 날짜 내림차순 정렬 후 첫 번째 가져오기
         latest_notice = df_notices.sort_values(by="날짜", ascending=False).iloc[0]
-        notice_content = latest_notice["내용"]
-        notice_date = latest_notice["날짜"]
-        
-        # HTML로 예쁜 박스 그리기
         st.markdown(f"""
         <div class="notice-box">
-            📢 <b>공지사항 ({notice_date})</b><br><br>
-            {notice_content}
+            📢 <b>공지사항 ({latest_notice['날짜']})</b><br><br>
+            {latest_notice['내용']}
         </div>
         """, unsafe_allow_html=True)
     else:
-        if is_admin:
-            st.info("등록된 공지사항이 없습니다. 아래에서 등록해주세요.")
+        if is_admin: st.info("등록된 공지사항이 없습니다.")
 
-    # 2. 관리자용 공지 등록 폼
     if is_admin:
         with st.expander("📢 공지사항 등록/수정 (관리자 전용)"):
             with st.form("notice_form"):
                 n_date = st.date_input("공지 날짜", datetime.date.today())
-                n_content = st.text_area("공지 내용 (줄바꿈 가능)", height=100)
+                n_content = st.text_area("공지 내용", height=100)
                 if st.form_submit_button("공지 올리기"):
                     new_notice = pd.DataFrame([{
-                        "날짜": str(n_date),
-                        "내용": n_content,
-                        "작성자": current_user_name
+                        "날짜": str(n_date), "내용": n_content, "작성자": current_user_name
                     }])
-                    # 기존 공지 유지하고 쌓을지, 덮어쓸지 결정. 여기선 쌓는 방식(히스토리 유지)
                     save_data("notices", pd.concat([df_notices, new_notice], ignore_index=True))
-                    st.success("공지사항이 등록되었습니다.")
+                    st.success("등록되었습니다.")
                     st.rerun()
 
+# 달력 그리기
 def draw_birthday_calendar(df_members):
     today = datetime.date.today()
     month = today.month
@@ -230,7 +220,7 @@ def draw_birthday_calendar(df_members):
     html_code += '</div>'
     st.markdown(html_code, unsafe_allow_html=True)
 
-# 로그인/로그아웃 함수
+# 로그인 프로세스
 def process_login(username, password, cookie_manager):
     df_users = load_data("users")
     matched = df_users[(df_users["아이디"] == username) & (df_users["비밀번호"] == password)]
@@ -244,10 +234,17 @@ def process_login(username, password, cookie_manager):
     else:
         st.error("아이디 또는 비밀번호가 잘못되었습니다.")
 
+# [수정] 로그아웃 프로세스 (KeyError 방지)
 def process_logout(cookie_manager):
     st.session_state["logged_in"] = False
     st.session_state["user_info"] = None
-    cookie_manager.delete("church_user_id")
+    
+    # 쿠키가 이미 없더라도 에러가 나지 않도록 try-except 처리
+    try:
+        cookie_manager.delete("church_user_id")
+    except KeyError:
+        pass # 이미 지워졌으면 무시
+        
     st.rerun()
 
 # --- 4. 메인 앱 실행 ---
@@ -307,7 +304,6 @@ def main():
     df_prayer = load_data("prayer_log")
     df_reports = load_data("reports")
 
-    # 메뉴 구성 (사역 보고 탭 추가)
     menu_list = ["🏠 홈", "📋 출석체크", "📊 통계", "🙏 기도제목", "📨 사역 보고", "👥 명단 관리"]
     if is_admin: menu_list.append("🔐 계정 관리")
     
@@ -316,11 +312,9 @@ def main():
 
     # --- 탭별 기능 ---
 
-    # 1. 홈 (공지사항 + 달력)
+    # 1. 홈
     if selected_menu == "🏠 홈":
-        # [추가] 공지사항 섹션 (달력 위에 배치)
         draw_notice_section(is_admin, current_user_name)
-        
         st.subheader("이번 달 주요 일정")
         draw_birthday_calendar(df_members)
 
@@ -466,41 +460,40 @@ def main():
                 for i, r in hist.iterrows():
                     st.info(f"**{r['날짜']}**: {r['내용']}")
 
-    # 5. [신규기능] 사역 보고
+    # 5. [수정됨] 사역 보고 (관리자 화면 간소화)
     elif selected_menu == "📨 사역 보고":
         st.subheader("📨 소그룹 사역 보고")
-        st.caption("소그룹장님들의 건의사항이나 특이사항을 관리자에게 전달하는 공간입니다.")
 
-        # 1. 보고서 작성 (누구나 작성 가능)
-        with st.expander("📝 새 보고서 작성하기", expanded=True):
-            with st.form("report_form"):
-                r_date = st.date_input("작성일", datetime.date.today())
-                r_content = st.text_area("보고 내용 (특이사항, 건의사항 등)", height=150)
-                if st.form_submit_button("보고서 제출"):
-                    new_report = pd.DataFrame([{
-                        "날짜": str(r_date),
-                        "작성자": current_user_name,
-                        "내용": r_content
-                    }])
-                    save_data("reports", pd.concat([df_reports, new_report], ignore_index=True))
-                    st.success("보고서가 제출되었습니다.")
-                    st.rerun()
-
-        st.divider()
-
-        # 2. 보고서 조회 (관리자 vs 리더)
         if is_admin:
-            st.markdown("### 📥 전체 사역 보고 리스트 (관리자용)")
+            # 관리자는 전체 리스트만 확인
+            st.markdown("### 📥 전체 사역 보고 리스트")
             if df_reports.empty:
                 st.info("제출된 보고서가 없습니다.")
             else:
-                # 날짜 내림차순 정렬
                 reports_view = df_reports.sort_values(by="날짜", ascending=False)
                 for i, row in reports_view.iterrows():
                     with st.container():
                         st.markdown(f"**🗓️ {row['날짜']} | 👤 {row['작성자']}**")
                         st.info(row['내용'])
         else:
+            # 소그룹장은 보고서 작성 및 내역 확인
+            st.caption("소그룹장님들의 건의사항이나 특이사항을 관리자에게 전달하는 공간입니다.")
+            
+            with st.expander("📝 새 보고서 작성하기", expanded=True):
+                with st.form("report_form"):
+                    r_date = st.date_input("작성일", datetime.date.today())
+                    r_content = st.text_area("보고 내용 (특이사항, 건의사항 등)", height=150)
+                    if st.form_submit_button("보고서 제출"):
+                        new_report = pd.DataFrame([{
+                            "날짜": str(r_date),
+                            "작성자": current_user_name,
+                            "내용": r_content
+                        }])
+                        save_data("reports", pd.concat([df_reports, new_report], ignore_index=True))
+                        st.success("보고서가 제출되었습니다.")
+                        st.rerun()
+
+            st.divider()
             st.markdown(f"### 📂 {current_user_name}님의 보낸 보고 내역")
             my_reports = df_reports[df_reports["작성자"] == current_user_name]
             if my_reports.empty:
