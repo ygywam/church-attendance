@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import calendar # [추가] 달력 기능을 위해 필요
+import calendar
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -11,7 +11,7 @@ SHEET_NAME = "교회출석데이터"
 # 페이지 기본 설정
 st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_state="collapsed")
 
-# --- 구글 시트 연결 함수 ---
+# --- 구글 시트 연결 함수 (리소스 캐싱) ---
 @st.cache_resource
 def get_google_sheet_client():
     try:
@@ -37,8 +37,12 @@ def get_worksheet(worksheet_name):
     except gspread.exceptions.SpreadsheetNotFound:
         st.error(f"오류: 구글 시트 '{SHEET_NAME}'을 찾을 수 없습니다. 공유 설정을 확인해주세요.")
         return None
+    except gspread.exceptions.APIError as e:
+        st.error("⚠️ 구글 시트 접속량이 많아 일시적으로 차단되었습니다. 잠시 후(1분 뒤) 다시 시도해주세요.")
+        return None
 
-# --- 데이터 읽기/쓰기 함수 ---
+# --- 데이터 읽기 함수 (캐싱 적용: 60초) ---
+@st.cache_data(ttl=60)
 def load_data(sheet_name):
     ws = get_worksheet(sheet_name)
     if not ws: return pd.DataFrame()
@@ -58,12 +62,15 @@ def load_data(sheet_name):
     df = pd.DataFrame(data)
     return df.astype(str)
 
+# --- 데이터 저장 함수 ---
 def save_data(sheet_name, df):
     ws = get_worksheet(sheet_name)
     if ws:
         ws.clear()
         ws.append_row(df.columns.tolist())
         ws.update(range_name='A2', values=df.values.tolist())
+        # 저장 후 캐시 초기화 (즉시 반영을 위해)
+        load_data.clear()
 
 # --- 날짜 관련 헬퍼 함수 ---
 def get_week_range(date_obj):
@@ -72,39 +79,35 @@ def get_week_range(date_obj):
     end_saturday = start_sunday + datetime.timedelta(days=6)
     return start_sunday, end_saturday
 
-# --- [신규 기능] 생일 달력 그리기 ---
+# --- 달력 그리기 ---
 def draw_birthday_calendar(df_members):
     today = datetime.date.today()
     year = today.year
     month = today.month
 
-    # 1. 생일 데이터 전처리 (월/일 추출)
-    birthdays = {} # { "5": ["홍길동(남)", "김철수(여)"], "15": ["최하늘(남)"] }
+    birthdays = {}
     
     if not df_members.empty:
         for _, row in df_members.iterrows():
             try:
-                # 입력 형식이 1986-05-02 든 1986.05.02 든 숫자만 뽑아서 처리
                 raw_birth = str(row["생일"]).replace(".", "-").replace("/", "-")
                 parts = raw_birth.split("-")
                 
-                if len(parts) >= 2: # 최소 월-일은 있어야 함
-                    b_month = int(parts[-2]) # 뒤에서 두번째가 월
-                    b_day = int(parts[-1])   # 맨 뒤가 일
+                if len(parts) >= 2:
+                    b_month = int(parts[-2])
+                    b_day = int(parts[-1])
                     
                     if b_month == month:
                         if str(b_day) not in birthdays:
                             birthdays[str(b_day)] = []
                         birthdays[str(b_day)].append(f"{row['이름']}")
             except:
-                continue # 날짜 형식이 이상하면 패스
+                continue
 
-    # 2. 달력 그리기
-    cal = calendar.monthcalendar(year, month) # 주 단위 리스트 반환 [[0,0,1,2,3,4,5], ...]
+    cal = calendar.monthcalendar(year, month)
     
     st.markdown(f"### 📅 {month}월 생일 달력")
     
-    # 요일 헤더
     cols = st.columns(7)
     weeks_list = ["일", "월", "화", "수", "목", "금", "토"]
     for i, day_name in enumerate(weeks_list):
@@ -115,21 +118,18 @@ def draw_birthday_calendar(df_members):
         else:
             cols[i].markdown(f"**{day_name}**")
 
-    # 날짜 채우기
     for week in cal:
         cols = st.columns(7)
         for i, day in enumerate(week):
             with cols[i]:
                 if day == 0:
-                    st.write("") # 빈 날짜
+                    st.write("")
                 else:
-                    # 날짜 표시 (오늘 날짜면 강조)
                     if day == today.day:
                         st.markdown(f"**:red[{day}]** 👈")
                     else:
                         st.markdown(f"**{day}**")
                     
-                    # 생일자 표시
                     if str(day) in birthdays:
                         for person in birthdays[str(day)]:
                             st.info(f"🎂{person}")
@@ -139,7 +139,6 @@ if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
     st.session_state["user_info"] = None
 
-# [핵심 수정] 현재 보고 있는 탭(페이지)을 기억하는 변수
 if "current_view" not in st.session_state:
     st.session_state["current_view"] = "🏠 홈"
 
@@ -161,14 +160,13 @@ def login(username, password):
 def logout():
     st.session_state["logged_in"] = False
     st.session_state["user_info"] = None
-    st.session_state["current_view"] = "🏠 홈" # 로그아웃시 홈으로 초기화
+    st.session_state["current_view"] = "🏠 홈"
     st.rerun()
 
 # --- 메인 앱 ---
 def main():
     st.title("⛪ 회정교회 출석체크 시스템")
 
-    # 사이드바 로그인 UI
     with st.sidebar:
         st.header("로그인")
         if not st.session_state["logged_in"]:
@@ -188,30 +186,24 @@ def main():
         st.warning("👈 사이드바에서 로그인해주세요.")
         st.stop()
 
-    # 데이터 로드 (st.spinner 제거하여 깜빡임 최소화)
     current_user = st.session_state["user_info"]
     is_admin = (current_user["역할"] == "admin")
     
-    # 데이터는 조용히 로드
     df_members = load_data("members")
     df_att = load_data("attendance_log")
     df_prayer = load_data("prayer_log")
 
-    # [핵심 수정] 튕김 방지를 위한 메뉴 구성
-    # st.tabs 대신 st.radio를 가로로 배치하여 탭처럼 사용 (상태 유지 가능)
     menu_options = ["🏠 홈", "📋 출석체크", "📊 통계", "🙏 기도제목", "👥 명단 관리"]
     if is_admin:
         menu_options.append("🔐 계정 관리")
 
-    # 메뉴 선택 (key를 지정하여 선택 상태 유지)
     selected_menu = st.radio("메뉴 이동", menu_options, horizontal=True, label_visibility="collapsed", key="main_nav_radio")
 
     st.divider()
 
-    # --- TAB 1: 홈 (달력 대시보드) ---
+    # --- TAB 1: 홈 ---
     if selected_menu == "🏠 홈":
         st.subheader("이번 달 주요 일정")
-        # [신규] 달력 그리기 함수 호출
         draw_birthday_calendar(df_members)
 
     # --- TAB 2: 출석체크 ---
@@ -231,7 +223,6 @@ def main():
         meeting_list = ["주일 1부", "주일 2부", "주일 오후", "소그룹 모임", "수요예배", "금요철야", "새벽기도"]
         meeting_name = c2.selectbox("모임", meeting_list, key="att_meeting_select")
 
-        # 소그룹 선택 로직
         all_groups = sorted(df_members["소그룹"].unique()) if not df_members.empty else []
         
         if is_admin:
@@ -256,6 +247,7 @@ def main():
             target_members = pd.DataFrame()
 
         if not target_members.empty:
+            # 현재 선택된 날짜/모임/소그룹에 해당하는 출석 기록만 가져옴
             current_log = df_att[
                 (df_att["날짜"] == str(check_date)) & 
                 (df_att["모임명"] == meeting_name)
@@ -270,7 +262,11 @@ def main():
                 for idx, row in target_members.iterrows():
                     name = row["이름"]
                     is_checked = name in attended_names
-                    status_dict[name] = cols[idx % 3].checkbox(name, value=is_checked, key=f"chk_{idx}_{name}")
+                    
+                    # [핵심 수정] key에 날짜와 모임명을 포함시켜, 모임 변경 시 체크박스가 새로 그려지도록 함
+                    unique_key = f"chk_{check_date}_{meeting_name}_{selected_group}_{name}"
+                    
+                    status_dict[name] = cols[idx % 3].checkbox(name, value=is_checked, key=unique_key)
                 
                 if st.form_submit_button("저장하기", use_container_width=True):
                     mask = (
