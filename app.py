@@ -74,7 +74,7 @@ def logout():
 
 # --- 메인 앱 ---
 def main():
-    st.title("⛪ 사랑의교회 출석체크 시스템")
+    st.title("⛪ 회정교회 출석체크 시스템")
 
     with st.sidebar:
         st.header("로그인")
@@ -324,4 +324,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
