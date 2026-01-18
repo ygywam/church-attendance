@@ -69,7 +69,6 @@ def save_data(sheet_name, df):
         ws.clear()
         ws.append_row(df.columns.tolist())
         ws.update(range_name='A2', values=df.values.tolist())
-        # 저장 후 캐시 초기화 (즉시 반영을 위해)
         load_data.clear()
 
 # --- 날짜 관련 헬퍼 함수 ---
@@ -247,7 +246,6 @@ def main():
             target_members = pd.DataFrame()
 
         if not target_members.empty:
-            # 현재 선택된 날짜/모임/소그룹에 해당하는 출석 기록만 가져옴
             current_log = df_att[
                 (df_att["날짜"] == str(check_date)) & 
                 (df_att["모임명"] == meeting_name)
@@ -262,10 +260,8 @@ def main():
                 for idx, row in target_members.iterrows():
                     name = row["이름"]
                     is_checked = name in attended_names
-                    
-                    # [핵심 수정] key에 날짜와 모임명을 포함시켜, 모임 변경 시 체크박스가 새로 그려지도록 함
+                    # 날짜/모임명이 바뀌면 체크박스도 새로 생성됨
                     unique_key = f"chk_{check_date}_{meeting_name}_{selected_group}_{name}"
-                    
                     status_dict[name] = cols[idx % 3].checkbox(name, value=is_checked, key=unique_key)
                 
                 if st.form_submit_button("저장하기", use_container_width=True):
@@ -289,7 +285,7 @@ def main():
                     st.success(f"{selected_group} 출석이 저장되었습니다!")
                     st.rerun()
 
-    # --- TAB 3: 통계 ---
+    # --- TAB 3: 통계 (업그레이드됨: 명단 리스트 및 색상 표시) ---
     elif selected_menu == "📊 통계":
         st.subheader("📊 주간 사역 통계")
         
@@ -316,6 +312,7 @@ def main():
                     stat_group = my_groups[0]
                     col_stat2.info(f"담당: {stat_group}")
 
+            # 데이터 필터링 (기간)
             mask_date = (df_att["날짜"] >= pd.Timestamp(start_sun)) & (df_att["날짜"] <= pd.Timestamp(end_sat))
             weekly_df = df_att[mask_date]
 
@@ -327,27 +324,51 @@ def main():
             if weekly_df.empty:
                 st.warning(f"해당 기간({start_sun.strftime('%m/%d')}~{end_sat.strftime('%m/%d')})에 출석 기록이 없습니다.")
             else:
+                # 1. 그래프 표시
                 st.markdown(f"**📉 {stat_group} - 이번 주 모임별 출석 현황**")
-                
                 meeting_counts = weekly_df["모임명"].value_counts().reset_index()
                 meeting_counts.columns = ["모임명", "출석인원"]
                 st.bar_chart(meeting_counts.set_index("모임명"))
 
-                with st.expander("상세 데이터 표 보기"):
-                    st.dataframe(meeting_counts, use_container_width=True)
-
                 st.divider()
 
-                st.markdown(f"**🏆 {stat_group} 성실 출석왕 (이번 주)**")
-                member_rank = weekly_df["이름"].value_counts().reset_index()
-                member_rank.columns = ["이름", "총 참석횟수"]
+                # 2. [신규 기능] 출석/결석 명단 리스트
+                st.markdown(f"**📋 {stat_group} 출석 체크 명단 ({start_sun.strftime('%m/%d')} ~ {end_sat.strftime('%m/%d')})**")
                 
-                if not member_rank.empty:
-                    top_score = member_rank.iloc[0]["총 참석횟수"]
-                    top_members = member_rank[member_rank["총 참석횟수"] == top_score]["이름"].tolist()
-                    st.success(f"🎉 1등: {', '.join(top_members)} ({top_score}회 참석)")
-                
-                st.dataframe(member_rank, use_container_width=True)
+                # (1) 대상 명단 확보 (관리자면 전체/개별, 리더면 자기 그룹)
+                if stat_group == "전체 합계":
+                    if is_admin:
+                        target_list = df_members.copy()
+                    else:
+                        my_grp_list = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
+                        target_list = df_members[df_members["소그룹"].isin(my_grp_list)].copy()
+                else:
+                    target_list = df_members[df_members["소그룹"] == stat_group].copy()
+
+                if not target_list.empty:
+                    # (2) 이번 주 출석한 사람 이름 확보
+                    attended_ids = weekly_df["이름"].unique()
+
+                    # (3) 출석 여부 컬럼 추가
+                    target_list["상태"] = target_list["이름"].apply(lambda x: "✅ 출석" if x in attended_ids else "❌ 결석")
+                    
+                    # (4) 정렬: 출석한 사람이 위로 (내림차순: ✅ > ❌) -> 이름순
+                    target_list = target_list.sort_values(by=["상태", "이름"], ascending=[False, True])
+                    
+                    # (5) 보여줄 컬럼 정리
+                    display_cols = ["이름", "소그룹", "성별", "전화번호", "상태"]
+                    # 데이터프레임에 실제 존재하는 컬럼만 선택
+                    final_cols = [c for c in display_cols if c in target_list.columns]
+                    view_df = target_list[final_cols]
+
+                    # (6) 스타일 적용 (결석이면 빨간색 배경)
+                    def highlight_absent(row):
+                        color = '#ffe6e6' if row['상태'] == '❌ 결석' else '' # 연한 빨강
+                        return [f'background-color: {color}' for _ in row]
+
+                    st.dataframe(view_df.style.apply(highlight_absent, axis=1), use_container_width=True)
+                else:
+                    st.info("표시할 명단이 없습니다.")
 
     # --- TAB 4: 기도제목 ---
     elif selected_menu == "🙏 기도제목":
