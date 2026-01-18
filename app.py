@@ -11,6 +11,51 @@ SHEET_NAME = "교회출석데이터"
 # 페이지 기본 설정
 st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_state="collapsed")
 
+# --- [스타일 추가] 어르신들을 위한 큰 글씨 적용 ---
+st.markdown("""
+    <style>
+    /* 1. 기본 본문 글자 키우기 */
+    html, body, p, li, .stMarkdown {
+        font-size: 20px !important;
+    }
+    
+    /* 2. 체크박스(출석 명단) 이름 아주 크게 & 굵게 */
+    .stCheckbox label p {
+        font-size: 24px !important;
+        font-weight: bold !important;
+        color: #1f1f1f;
+    }
+    
+    /* 3. 입력창, 날짜 선택, 드롭다운 글씨 */
+    .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] {
+        font-size: 20px !important;
+        height: 50px !important; /* 입력칸 높이도 편하게 */
+    }
+
+    /* 4. 저장 버튼 등 버튼 글씨 */
+    .stButton button {
+        font-size: 22px !important;
+        font-weight: bold !important;
+        padding: 10px 24px !important;
+    }
+
+    /* 5. 상단 메뉴 탭 글씨 */
+    div[role="radiogroup"] label {
+        font-size: 20px !important;
+    }
+    
+    /* 6. 표(DataFrame) 내부 글씨 (일부 브라우저 적용) */
+    div[data-testid="stDataFrame"] {
+        font-size: 18px !important;
+    }
+
+    /* 7. 헤더(제목) 크기 */
+    h1 { font-size: 42px !important; }
+    h2 { font-size: 36px !important; }
+    h3 { font-size: 28px !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
 # --- 구글 시트 연결 함수 (리소스 캐싱) ---
 @st.cache_resource
 def get_google_sheet_client():
@@ -260,7 +305,6 @@ def main():
                 for idx, row in target_members.iterrows():
                     name = row["이름"]
                     is_checked = name in attended_names
-                    # 날짜/모임명이 바뀌면 체크박스도 새로 생성됨
                     unique_key = f"chk_{check_date}_{meeting_name}_{selected_group}_{name}"
                     status_dict[name] = cols[idx % 3].checkbox(name, value=is_checked, key=unique_key)
                 
@@ -285,7 +329,7 @@ def main():
                     st.success(f"{selected_group} 출석이 저장되었습니다!")
                     st.rerun()
 
-    # --- TAB 3: 통계 (업그레이드됨: 명단 리스트 및 색상 표시) ---
+    # --- TAB 3: 통계 ---
     elif selected_menu == "📊 통계":
         st.subheader("📊 주간 사역 통계")
         
@@ -312,7 +356,6 @@ def main():
                     stat_group = my_groups[0]
                     col_stat2.info(f"담당: {stat_group}")
 
-            # 데이터 필터링 (기간)
             mask_date = (df_att["날짜"] >= pd.Timestamp(start_sun)) & (df_att["날짜"] <= pd.Timestamp(end_sat))
             weekly_df = df_att[mask_date]
 
@@ -324,7 +367,6 @@ def main():
             if weekly_df.empty:
                 st.warning(f"해당 기간({start_sun.strftime('%m/%d')}~{end_sat.strftime('%m/%d')})에 출석 기록이 없습니다.")
             else:
-                # 1. 그래프 표시
                 st.markdown(f"**📉 {stat_group} - 이번 주 모임별 출석 현황**")
                 meeting_counts = weekly_df["모임명"].value_counts().reset_index()
                 meeting_counts.columns = ["모임명", "출석인원"]
@@ -332,10 +374,8 @@ def main():
 
                 st.divider()
 
-                # 2. [신규 기능] 출석/결석 명단 리스트
                 st.markdown(f"**📋 {stat_group} 출석 체크 명단 ({start_sun.strftime('%m/%d')} ~ {end_sat.strftime('%m/%d')})**")
                 
-                # (1) 대상 명단 확보 (관리자면 전체/개별, 리더면 자기 그룹)
                 if stat_group == "전체 합계":
                     if is_admin:
                         target_list = df_members.copy()
@@ -346,24 +386,16 @@ def main():
                     target_list = df_members[df_members["소그룹"] == stat_group].copy()
 
                 if not target_list.empty:
-                    # (2) 이번 주 출석한 사람 이름 확보
                     attended_ids = weekly_df["이름"].unique()
-
-                    # (3) 출석 여부 컬럼 추가
                     target_list["상태"] = target_list["이름"].apply(lambda x: "✅ 출석" if x in attended_ids else "❌ 결석")
-                    
-                    # (4) 정렬: 출석한 사람이 위로 (내림차순: ✅ > ❌) -> 이름순
                     target_list = target_list.sort_values(by=["상태", "이름"], ascending=[False, True])
                     
-                    # (5) 보여줄 컬럼 정리
                     display_cols = ["이름", "소그룹", "성별", "전화번호", "상태"]
-                    # 데이터프레임에 실제 존재하는 컬럼만 선택
                     final_cols = [c for c in display_cols if c in target_list.columns]
                     view_df = target_list[final_cols]
 
-                    # (6) 스타일 적용 (결석이면 빨간색 배경)
                     def highlight_absent(row):
-                        color = '#ffe6e6' if row['상태'] == '❌ 결석' else '' # 연한 빨강
+                        color = '#ffe6e6' if row['상태'] == '❌ 결석' else '' 
                         return [f'background-color: {color}' for _ in row]
 
                     st.dataframe(view_df.style.apply(highlight_absent, axis=1), use_container_width=True)
