@@ -146,18 +146,23 @@ def main():
             st.info("등록된 성도 데이터가 없습니다.")
         else:
             try:
-                # 생일 데이터 처리
-                df_members["생일_월"] = df_members["생일"].astype(str).apply(
+                # [수정] 원본 데이터를 더럽히지 않도록 복사본(temp_df)을 만들어서 계산
+                temp_df = df_members.copy()
+                
+                # 생일 데이터 처리 (YYYY-MM-DD 형식에서 월 추출)
+                temp_df["생일_월"] = temp_df["생일"].astype(str).apply(
                     lambda x: x.split("-")[1] if "-" in x and len(x.split("-")) >= 2 else None
                 )
                 
                 current_month_str = str(datetime.date.today().month).zfill(2)
-                birthday_people = df_members[df_members["생일_월"] == current_month_str]
+                birthday_people = temp_df[temp_df["생일_월"] == current_month_str]
 
                 if not birthday_people.empty:
+                    # 일자별 정렬
                     birthday_people["생일_일"] = birthday_people["생일"].apply(lambda x: x.split("-")[-1])
                     birthday_people = birthday_people.sort_values("생일_일")
                     
+                    # 카드 형태로 보여주기
                     b_cols = st.columns(4)
                     for idx, row in birthday_people.iterrows():
                         with b_cols[idx % 4]:
@@ -169,7 +174,8 @@ def main():
                 else:
                     st.write("이번 달 생일자가 없습니다.")
             except Exception as e:
-                st.error("생일 데이터 형식이 올바르지 않아 불러올 수 없습니다. (YYYY-MM-DD 형식 권장)")
+                # 데이터 형식이 안 맞을 경우 에러 방지
+                st.warning("생일 정보 형식을 확인해주세요. (예: 1986-05-02)")
 
         st.divider()
         st.markdown("### 👋 환영합니다")
@@ -429,3 +435,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
