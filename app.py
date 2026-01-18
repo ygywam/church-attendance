@@ -13,56 +13,77 @@ SHEET_NAME = "교회출석데이터"
 # 페이지 기본 설정
 st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_state="collapsed")
 
-# --- [스타일] 모바일 최적화 및 큰 글씨 적용 ---
+# --- [스타일] CSS Grid 적용 (달력 강제 고정) ---
 st.markdown("""
     <style>
-    /* === 공통(데스크탑 기준) 스타일 === */
-    html, body, p, li, .stMarkdown { font-size: 20px !important; }
-    /* 제목은 가운데 정렬 */
-    h1 { font-size: 42px !important; text-align: center; }
-    h2 { font-size: 36px !important; }
-    h3 { font-size: 28px !important; }
-    .stCheckbox label p { font-size: 24px !important; font-weight: bold !important; color: #1f1f1f; }
-    .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] { font-size: 20px !important; height: 50px !important; }
-    .stButton button { font-size: 22px !important; font-weight: bold !important; padding: 10px 24px !important; }
-    div[role="radiogroup"] label { font-size: 20px !important; }
-    div[data-testid="stDataFrame"] { font-size: 18px !important; }
+    /* 기본 폰트 설정 */
+    html, body, p, li, .stMarkdown { font-size: 18px !important; }
+    
+    /* 제목 스타일: 단어 단위 줄바꿈 + 중앙 정렬 */
+    h1 { 
+        font-size: 32px !important; 
+        text-align: center; 
+        word-break: keep-all; /* 단어 중간에 잘리지 않음 */
+        margin-bottom: 20px !important;
+    }
+    
+    /* 체크박스, 버튼 등 UI 크기 조절 */
+    .stCheckbox label p { font-size: 20px !important; font-weight: bold; }
+    .stButton button { font-size: 20px !important; font-weight: bold; width: 100%; }
+    
+    /* === [핵심] 달력 전용 CSS Grid 스타일 === */
+    .calendar-container {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr); /* 무조건 7등분 (반응형) */
+        gap: 2px; /* 칸 사이 간격 */
+        margin-top: 10px;
+        width: 100%;
+    }
+    
+    /* 요일 헤더 */
+    .cal-header {
+        text-align: center;
+        font-weight: bold;
+        padding: 5px 0;
+        font-size: 16px;
+    }
+    
+    /* 날짜 칸 */
+    .cal-cell {
+        background-color: #f9f9f9;
+        border: 1px solid #eee;
+        min-height: 60px; /* 최소 높이 확보 */
+        padding: 2px;
+        text-align: center;
+        font-size: 14px;
+        border-radius: 5px;
+    }
+    
+    /* 오늘 날짜 강조 */
+    .today {
+        border: 2px solid #ff4b4b !important;
+        background-color: #fff0f0 !important;
+    }
+    
+    /* 생일 뱃지 */
+    .b-badge {
+        display: block;
+        background-color: #e6f3ff;
+        color: #0068c9;
+        font-size: 11px;
+        border-radius: 4px;
+        padding: 2px;
+        margin-top: 2px;
+        word-break: keep-all;
+        line-height: 1.1;
+    }
 
-    /* === 모바일 전용 스타일 (화면 폭이 768px 이하일 때 적용) === */
-    @media only screen and (max-width: 768px) {
-        /* 1. 메인 타이틀 예쁘게 줄바꿈 */
-        h1 {
-            font-size: 32px !important; /* 크기 약간 축소 */
-            line-height: 1.3 !important; /* 줄간격 조정 */
-            word-break: keep-all; /* 단어가 잘리지 않게 함 */
-        }
-        
-        /* 2. 본문 글씨 크기 약간 조절 */
-        html, body, p, li, .stMarkdown { font-size: 18px !important; }
-
-        /* 3. 달력 깨짐 방지 긴급 처방 */
-        /* 컬럼(요일 칸)들이 좁은 화면에서도 한 줄을 유지하도록 강제 */
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-             min-width: 0px !important; /* 최소 너비 제한 해제 */
-             padding: 0px 2px !important; /* 칸 사이 간격 최소화 */
-        }
-        /* 달력 내부 날짜 숫자와 이름 크기를 강제로 작게 설정 */
-        .calendar-cell {
-            font-size: 14px !important;
-            margin: 2px 0px !important;
-            text-align: center;
-            line-height: 1.2;
-        }
-        .calendar-header {
-            font-size: 16px !important;
-            text-align: center;
-            font-weight: bold;
-        }
-        /* 달력 안의 생일자 이름 뱃지 스타일 */
-        .stAlert {
-             padding: 4px !important;
-             font-size: 12px !important;
-        }
+    /* 모바일 미디어 쿼리 (화면이 좁을 때 미세 조정) */
+    @media only screen and (max-width: 600px) {
+        .cal-header { font-size: 14px; }
+        .cal-cell { min-height: 50px; font-size: 12px; }
+        .b-badge { font-size: 10px; }
+        h1 { font-size: 26px !important; } /* 제목 더 작게 */
     }
     </style>
     """, unsafe_allow_html=True)
@@ -128,12 +149,13 @@ def get_week_range(date_obj):
     end_saturday = start_sunday + datetime.timedelta(days=6)
     return start_sunday, end_saturday
 
-# [수정] 달력 그리기 함수 (모바일 스타일 적용을 위해 HTML 사용)
+# [핵심 수정] HTML/CSS Grid로 달력 그리기 (절대 깨지지 않음)
 def draw_birthday_calendar(df_members):
     today = datetime.date.today()
     month = today.month
     year = today.year
     
+    # 생일 데이터 가공
     birthdays = {}
     if not df_members.empty:
         for _, row in df_members.iterrows():
@@ -148,33 +170,43 @@ def draw_birthday_calendar(df_members):
                         birthdays[str(b_day)].append(f"{row['이름']}")
             except: continue
 
-    cal = calendar.monthcalendar(year, month)
     st.markdown(f"### 📅 {month}월 생일 달력")
+
+    # HTML 문자열 생성 시작
+    html_code = '<div class="calendar-container">'
     
-    cols = st.columns(7)
+    # 1. 요일 헤더
     weeks = ["일", "월", "화", "수", "목", "금", "토"]
     for i, w in enumerate(weeks):
-        color = "red" if i==0 else "blue" if i==6 else "black"
-        # HTML을 사용하여 클래스 부여
-        cols[i].markdown(f"<div class='calendar-header' style='color:{color};'>{w}</div>", unsafe_allow_html=True)
+        color = "red" if i==0 else "blue" if i==6 else "#333"
+        html_code += f'<div class="cal-header" style="color: {color};">{w}</div>'
 
+    # 2. 날짜 채우기
+    cal = calendar.monthcalendar(year, month)
     for week in cal:
-        cols = st.columns(7)
-        for i, day in enumerate(week):
-            with cols[i]:
-                if day == 0: st.write("")
-                else:
-                    # HTML을 사용하여 클래스 및 스타일 부여
-                    style = "color: red; font-weight: bold;" if day == today.day else ""
-                    mark = "👈" if day == today.day else ""
-                    st.markdown(f"<div class='calendar-cell' style='{style}'>{day}{mark}</div>", unsafe_allow_html=True)
-                    
-                    if str(day) in birthdays:
-                        for p in birthdays[str(day)]:
-                            # st.info 대신 HTML 사용으로 모바일에서 크기 제어
-                            st.markdown(f"<div style='background-color:#e6f3ff; padding:2px; border-radius:4px; font-size:12px; text-align:center; margin-top:2px;'>🎂{p}</div>", unsafe_allow_html=True)
+        for day in week:
+            if day == 0:
+                html_code += '<div class="cal-cell" style="background:transparent; border:none;"></div>'
+            else:
+                is_today = "today" if day == today.day else ""
+                day_style = "color: red;" if day == today.day else ""
+                
+                html_code += f'<div class="cal-cell {is_today}">'
+                html_code += f'<div style="{day_style} font-weight:bold;">{day}</div>'
+                
+                # 생일자 뱃지 추가
+                if str(day) in birthdays:
+                    for p in birthdays[str(day)]:
+                        html_code += f'<span class="b-badge">🎂{p}</span>'
+                
+                html_code += '</div>'
 
-# 로그인/로그아웃 프로세스
+    html_code += '</div>' # 컨테이너 닫기
+    
+    # Streamlit에 HTML 렌더링
+    st.markdown(html_code, unsafe_allow_html=True)
+
+# 로그인 함수
 def process_login(username, password, cookie_manager):
     df_users = load_data("users")
     matched = df_users[(df_users["아이디"] == username) & (df_users["비밀번호"] == password)]
@@ -198,20 +230,19 @@ def process_logout(cookie_manager):
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
     
-    # 안전장치: 변수 초기화
+    # 안전장치 초기화
     df_stat = pd.DataFrame()
     target = pd.DataFrame()
     t_list = pd.DataFrame()
     w_df = pd.DataFrame()
 
-    # 제목 표시 (스타일 적용됨)
     st.title("회정교회 출석체크 시스템")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
         st.session_state["user_info"] = None
 
-    # 자동 로그인 체크
+    # 자동 로그인
     if not st.session_state["logged_in"]:
         time.sleep(0.5)
         cookie_id = cookie_manager.get(cookie="church_user_id")
@@ -251,7 +282,6 @@ def main():
     df_att = load_data("attendance_log")
     df_prayer = load_data("prayer_log")
 
-    # 메뉴
     menu_list = ["🏠 홈", "📋 출석체크", "📊 통계", "🙏 기도제목", "👥 명단 관리"]
     if is_admin: menu_list.append("🔐 계정 관리")
     
@@ -364,6 +394,7 @@ def main():
                     view_by_family = st.checkbox("👨‍👩‍👧‍👦 가족별로 묶어보기", key="stat_fam_view")
                     
                     att_names = w_df["이름"].unique()
+                    # 정렬: 출석(0)이 위로
                     t_list["정렬키"] = t_list["이름"].apply(lambda x: 0 if x in att_names else 1)
                     t_list["상태"] = t_list["정렬키"].apply(lambda x: "✅ 출석" if x == 0 else "❌ 결석")
                     
