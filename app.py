@@ -13,18 +13,57 @@ SHEET_NAME = "교회출석데이터"
 # 페이지 기본 설정
 st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_state="collapsed")
 
-# --- [스타일] 큰 글씨 적용 ---
+# --- [스타일] 모바일 최적화 및 큰 글씨 적용 ---
 st.markdown("""
     <style>
+    /* === 공통(데스크탑 기준) 스타일 === */
     html, body, p, li, .stMarkdown { font-size: 20px !important; }
+    /* 제목은 가운데 정렬 */
+    h1 { font-size: 42px !important; text-align: center; }
+    h2 { font-size: 36px !important; }
+    h3 { font-size: 28px !important; }
     .stCheckbox label p { font-size: 24px !important; font-weight: bold !important; color: #1f1f1f; }
     .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] { font-size: 20px !important; height: 50px !important; }
     .stButton button { font-size: 22px !important; font-weight: bold !important; padding: 10px 24px !important; }
     div[role="radiogroup"] label { font-size: 20px !important; }
     div[data-testid="stDataFrame"] { font-size: 18px !important; }
-    h1 { font-size: 42px !important; }
-    h2 { font-size: 36px !important; }
-    h3 { font-size: 28px !important; }
+
+    /* === 모바일 전용 스타일 (화면 폭이 768px 이하일 때 적용) === */
+    @media only screen and (max-width: 768px) {
+        /* 1. 메인 타이틀 예쁘게 줄바꿈 */
+        h1 {
+            font-size: 32px !important; /* 크기 약간 축소 */
+            line-height: 1.3 !important; /* 줄간격 조정 */
+            word-break: keep-all; /* 단어가 잘리지 않게 함 */
+        }
+        
+        /* 2. 본문 글씨 크기 약간 조절 */
+        html, body, p, li, .stMarkdown { font-size: 18px !important; }
+
+        /* 3. 달력 깨짐 방지 긴급 처방 */
+        /* 컬럼(요일 칸)들이 좁은 화면에서도 한 줄을 유지하도록 강제 */
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+             min-width: 0px !important; /* 최소 너비 제한 해제 */
+             padding: 0px 2px !important; /* 칸 사이 간격 최소화 */
+        }
+        /* 달력 내부 날짜 숫자와 이름 크기를 강제로 작게 설정 */
+        .calendar-cell {
+            font-size: 14px !important;
+            margin: 2px 0px !important;
+            text-align: center;
+            line-height: 1.2;
+        }
+        .calendar-header {
+            font-size: 16px !important;
+            text-align: center;
+            font-weight: bold;
+        }
+        /* 달력 안의 생일자 이름 뱃지 스타일 */
+        .stAlert {
+             padding: 4px !important;
+             font-size: 12px !important;
+        }
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -89,6 +128,7 @@ def get_week_range(date_obj):
     end_saturday = start_sunday + datetime.timedelta(days=6)
     return start_sunday, end_saturday
 
+# [수정] 달력 그리기 함수 (모바일 스타일 적용을 위해 HTML 사용)
 def draw_birthday_calendar(df_members):
     today = datetime.date.today()
     month = today.month
@@ -114,8 +154,9 @@ def draw_birthday_calendar(df_members):
     cols = st.columns(7)
     weeks = ["일", "월", "화", "수", "목", "금", "토"]
     for i, w in enumerate(weeks):
-        color = ":red" if i==0 else ":blue" if i==6 else ""
-        cols[i].markdown(f"**{color}[{w}]**")
+        color = "red" if i==0 else "blue" if i==6 else "black"
+        # HTML을 사용하여 클래스 부여
+        cols[i].markdown(f"<div class='calendar-header' style='color:{color};'>{w}</div>", unsafe_allow_html=True)
 
     for week in cal:
         cols = st.columns(7)
@@ -123,12 +164,17 @@ def draw_birthday_calendar(df_members):
             with cols[i]:
                 if day == 0: st.write("")
                 else:
-                    mark = f"**:red[{day}]** 👈" if day == today.day else f"**{day}**"
-                    st.markdown(mark)
+                    # HTML을 사용하여 클래스 및 스타일 부여
+                    style = "color: red; font-weight: bold;" if day == today.day else ""
+                    mark = "👈" if day == today.day else ""
+                    st.markdown(f"<div class='calendar-cell' style='{style}'>{day}{mark}</div>", unsafe_allow_html=True)
+                    
                     if str(day) in birthdays:
-                        for p in birthdays[str(day)]: st.info(f"🎂{p}")
+                        for p in birthdays[str(day)]:
+                            # st.info 대신 HTML 사용으로 모바일에서 크기 제어
+                            st.markdown(f"<div style='background-color:#e6f3ff; padding:2px; border-radius:4px; font-size:12px; text-align:center; margin-top:2px;'>🎂{p}</div>", unsafe_allow_html=True)
 
-# 로그인 함수 (main 밖으로 분리)
+# 로그인/로그아웃 프로세스
 def process_login(username, password, cookie_manager):
     df_users = load_data("users")
     matched = df_users[(df_users["아이디"] == username) & (df_users["비밀번호"] == password)]
@@ -136,8 +182,6 @@ def process_login(username, password, cookie_manager):
     if not matched.empty:
         st.session_state["logged_in"] = True
         st.session_state["user_info"] = matched.iloc[0].to_dict()
-        
-        # 쿠키 저장 (30일 유효)
         expires = datetime.datetime.now() + datetime.timedelta(days=30)
         cookie_manager.set("church_user_id", username, expires_at=expires)
         st.rerun()
@@ -152,36 +196,34 @@ def process_logout(cookie_manager):
 
 # --- 4. 메인 앱 실행 ---
 def main():
-    # [핵심] 쿠키 매니저 초기화
     cookie_manager = stx.CookieManager(key="church_cookies")
     
-    # [안전장치] 변수 초기화 (UnboundLocalError 방지)
+    # 안전장치: 변수 초기화
     df_stat = pd.DataFrame()
     target = pd.DataFrame()
     t_list = pd.DataFrame()
     w_df = pd.DataFrame()
 
-    st.title("⛪ 회정교회 출석체크 시스템")
+    # 제목 표시 (스타일 적용됨)
+    st.title("회정교회 출석체크 시스템")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
         st.session_state["user_info"] = None
 
-    # [수정] 자동 로그인 로직 (대기 시간 1초로 증가)
-    # 쿠키를 불러오는 시간을 충분히 주어 로그인이 풀리는 것을 방지
+    # 자동 로그인 체크
     if not st.session_state["logged_in"]:
-        time.sleep(1.0) # 0.5 -> 1.0초로 늘림
-        cookie_user_id = cookie_manager.get(cookie="church_user_id")
-        
-        if cookie_user_id:
+        time.sleep(0.5)
+        cookie_id = cookie_manager.get(cookie="church_user_id")
+        if cookie_id:
             df_users = load_data("users")
-            user_match = df_users[df_users["아이디"] == cookie_user_id]
+            user_match = df_users[df_users["아이디"] == cookie_id]
             if not user_match.empty:
                 st.session_state["logged_in"] = True
                 st.session_state["user_info"] = user_match.iloc[0].to_dict()
                 st.rerun()
 
-    # --- 사이드바 (로그인) ---
+    # 사이드바
     with st.sidebar:
         st.header("로그인")
         if not st.session_state["logged_in"]:
@@ -189,7 +231,7 @@ def main():
             input_pw = st.text_input("비밀번호", type="password", key="login_pw")
             if st.button("로그인", key="login_btn"):
                 process_login(input_id, input_pw, cookie_manager)
-            st.caption("초기 설정: admin / 1234")
+            st.caption("초기: admin / 1234")
         else:
             u_info = st.session_state["user_info"]
             st.success(f"환영합니다! {u_info['이름']}님")
@@ -197,12 +239,11 @@ def main():
             if st.button("로그아웃", key="logout_btn"):
                 process_logout(cookie_manager)
 
-    # 비로그인 차단
     if not st.session_state["logged_in"]:
         st.warning("👈 왼쪽 사이드바에서 로그인해주세요.")
         st.stop()
 
-    # --- 데이터 로드 ---
+    # 데이터 로드
     current_user = st.session_state["user_info"]
     is_admin = (current_user["역할"] == "admin")
     
@@ -277,7 +318,7 @@ def main():
                     st.success("저장 완료!")
                     st.rerun()
 
-    # 3. 통계 (정렬 문제 완벽 해결)
+    # 3. 통계
     elif selected_menu == "📊 통계":
         st.subheader("📊 주간 사역 통계")
         if df_att.empty: st.info("데이터가 없습니다.")
@@ -323,19 +364,15 @@ def main():
                     view_by_family = st.checkbox("👨‍👩‍👧‍👦 가족별로 묶어보기", key="stat_fam_view")
                     
                     att_names = w_df["이름"].unique()
-                    
-                    # [수정] 정렬 로직 개선: 출석(0)이 결석(1)보다 위에 오게 함
                     t_list["정렬키"] = t_list["이름"].apply(lambda x: 0 if x in att_names else 1)
                     t_list["상태"] = t_list["정렬키"].apply(lambda x: "✅ 출석" if x == 0 else "❌ 결석")
                     
                     if view_by_family:
                         t_list = t_list.copy()
                         t_list["가족ID_정렬"] = pd.to_numeric(t_list["가족ID"], errors='coerce').fillna(99999)
-                        # 가족ID로 먼저 묶고, 그 안에서 이름순
                         t_list = t_list.sort_values(by=["가족ID_정렬", "이름"])
                         disp_cols = ["가족ID", "이름", "상태", "소그룹", "전화번호"]
                     else:
-                        # [핵심 수정] 정렬키(0=출석, 1=결석) 오름차순 -> 출석이 맨 위로 옴
                         t_list = t_list.sort_values(by=["정렬키", "이름"], ascending=[True, True])
                         disp_cols = ["이름", "상태", "소그룹", "전화번호"]
                     
