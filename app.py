@@ -21,40 +21,35 @@ st.markdown("""
         font-size: 46px !important; text-align: center; word-break: keep-all; 
         margin-bottom: 30px !important; font-weight: 800 !important;
     }
-    .stCheckbox label p { font-size: 20px !important; font-weight: bold; }
     .stButton button { font-size: 20px !important; font-weight: bold; width: 100%; }
     
+    /* 공지사항 박스 */
     .notice-box {
         background-color: #fff3cd; border: 2px solid #ffeeba; color: #856404;
         padding: 15px; border-radius: 10px; margin-bottom: 20px;
         text-align: center; font-size: 20px; font-weight: bold; line-height: 1.5; word-break: keep-all;
     }
 
-    .calendar-container {
-        display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; width: 100%;
-    }
-    .cal-header {
-        text-align: center; font-weight: bold; padding: 5px 0; font-size: 16px;
-    }
+    /* 달력 CSS */
+    .calendar-container { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; width: 100%; }
+    .cal-header { text-align: center; font-weight: bold; padding: 5px 0; font-size: 16px; }
     .cal-cell {
         background-color: #f9f9f9; border: 1px solid #eee; min-height: 70px;
         padding: 4px; text-align: center; font-size: 15px; border-radius: 8px;
     }
-    .today {
-        border: 2px solid #ff4b4b !important; background-color: #fff0f0 !important;
-    }
+    .today { border: 2px solid #ff4b4b !important; background-color: #fff0f0 !important; }
     .b-badge {
         display: block; background-color: #e6f3ff; color: #0068c9;
         font-size: 12px; border-radius: 4px; padding: 2px; margin-top: 4px;
         word-break: keep-all; line-height: 1.2; font-weight: bold;
     }
 
+    /* 모바일 반응형 */
     @media only screen and (max-width: 600px) {
         h1 { font-size: 28px !important; margin-bottom: 15px !important; }
         .cal-header { font-size: 14px; }
         .cal-cell { min-height: 55px; font-size: 13px; padding: 2px; }
         .b-badge { font-size: 11px; margin-top: 2px; }
-        .notice-box { font-size: 16px; padding: 10px; }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -262,53 +257,93 @@ def main():
         st.subheader("이번 달 주요 일정")
         draw_birthday_calendar(df_members)
 
-    # --- 2. 출석체크 ---
+    # --- 2. [수정] 출석체크 (그리드 방식) ---
     elif sel_menu == "📋 출석체크":
-        st.subheader("모임 출석 확인")
+        st.subheader("📋 주간 모임 통합 출석체크")
+        
+        # 날짜 및 그룹 선택
         c1, c2 = st.columns(2)
         chk_date = c1.date_input("날짜", datetime.date.today())
-        
         days = ["(월)", "(화)", "(수)", "(목)", "(금)", "(토)", "(일)"]
-        day_str = days[chk_date.weekday()]
-        if day_str == "(일)": c1.markdown(f":red[**오늘은 {day_str}요일**]")
-        else: c1.caption(f"**{day_str}요일**")
-
-        meets = ["주일 1부", "주일 2부", "주일 오후", "소그룹 모임", "수요예배", "금요철야", "새벽기도"]
-        meet_name = c2.selectbox("모임", meets)
+        c1.caption(f"선택일: {chk_date.strftime('%Y-%m-%d')} {days[chk_date.weekday()]}")
 
         all_grps = sorted(df_members["소그룹"].unique())
-        if is_admin: grp = st.selectbox("소그룹(관리자)", ["전체 보기"] + all_grps)
+        if is_admin: grp = c2.selectbox("소그룹(관리자)", ["전체 보기"] + all_grps)
         else:
             my_grps = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
-            if len(my_grps) > 1: grp = st.selectbox("소그룹 선택", my_grps)
-            elif len(my_grps) == 1: grp = my_grps[0]; st.info(f"담당: {grp}")
+            if len(my_grps) > 1: grp = c2.selectbox("소그룹 선택", my_grps)
+            elif len(my_grps) == 1: grp = my_grps[0]; c2.info(f"담당: {grp}")
             else: grp = None
+
+        # [핵심] 체크할 모임 리스트 (새벽기도 제외)
+        check_cols = ["주일 1부", "주일 2부", "주일 오후", "소그룹 모임", "수요예배", "금요철야"]
 
         if grp:
             targets = df_members if grp == "전체 보기" else df_members[df_members["소그룹"] == grp]
         else: targets = pd.DataFrame()
 
         if not targets.empty:
-            log = df_att[(df_att["날짜"]==str(chk_date)) & (df_att["모임명"]==meet_name)]
-            att_ids = log["이름"].tolist()
+            # 현재 날짜의 출석 기록 가져오기
+            current_log = df_att[df_att["날짜"] == str(chk_date)]
+            
+            # 그리드 데이터 생성
+            grid_data = []
+            for _, member in targets.iterrows():
+                row = {"이름": member["이름"], "소그룹": member["소그룹"]}
+                # 각 모임별 출석 여부 확인
+                member_log = current_log[current_log["이름"] == member["이름"]]
+                for col in check_cols:
+                    is_attended = not member_log[member_log["모임명"] == col].empty
+                    row[col] = is_attended
+                grid_data.append(row)
+            
+            df_grid = pd.DataFrame(grid_data)
 
-            with st.form("att_form"):
-                st.write(f"**{grp}** 명단 ({len(targets)}명)")
-                cols = st.columns(3)
-                status = {}
-                for i, row in targets.iterrows():
-                    name = row["이름"]
-                    ukey = f"chk_{chk_date}_{meet_name}_{grp}_{name}"
-                    status[name] = cols[i%3].checkbox(name, value=(name in att_ids), key=ukey)
+            # 데이터 에디터 설정 (체크박스)
+            column_config = {
+                "이름": st.column_config.TextColumn("이름", disabled=True),
+                "소그룹": st.column_config.TextColumn("소그룹", disabled=True)
+            }
+            for col in check_cols:
+                column_config[col] = st.column_config.CheckboxColumn(col, default=False)
+
+            st.info("💡 모임별로 출석한 사람을 체크하고 하단의 '저장' 버튼을 누르세요.")
+            edited_df = st.data_editor(
+                df_grid,
+                column_config=column_config,
+                hide_index=True,
+                use_container_width=True
+            )
+
+            if st.button("✅ 출석 저장하기", use_container_width=True):
+                # 1. 현재 날짜/그룹의 해당 모임들 기록 일단 삭제 (덮어쓰기 위함)
+                mask_date = df_att["날짜"] == str(chk_date)
+                mask_grp = df_att["소그룹"] == grp if grp != "전체 보기" else True
+                mask_meeting = df_att["모임명"].isin(check_cols)
                 
-                if st.form_submit_button("저장하기", use_container_width=True):
-                    mask = (df_att["날짜"]==str(chk_date)) & (df_att["모임명"]==meet_name) & (df_att["소그룹"]==grp)
-                    df_clean = df_att[~mask]
-                    new_rows = []
-                    for n, checked in status.items():
-                        if checked: new_rows.append({"날짜":str(chk_date), "모임명":meet_name, "이름":n, "소그룹":grp, "출석여부":"출석"})
-                    save_data("attendance_log", pd.concat([df_clean, pd.DataFrame(new_rows)], ignore_index=True))
-                    st.success("저장 완료!"); st.rerun()
+                # 삭제 대상이 아닌 것들만 남김
+                df_clean = df_att[~(mask_date & mask_grp & mask_meeting)]
+                
+                # 2. 에디터 내용을 바탕으로 새 기록 생성
+                new_records = []
+                for _, row in edited_df.iterrows():
+                    name = row["이름"]
+                    u_grp = row["소그룹"]
+                    for col in check_cols:
+                        if row[col]: # 체크된 경우만 추가
+                            new_records.append({
+                                "날짜": str(chk_date),
+                                "모임명": col,
+                                "이름": name,
+                                "소그룹": u_grp,
+                                "출석여부": "출석"
+                            })
+                
+                # 3. 병합 및 저장
+                final_df = pd.concat([df_clean, pd.DataFrame(new_records)], ignore_index=True)
+                save_data("attendance_log", final_df)
+                st.success("저장이 완료되었습니다! 🎉")
+                st.rerun()
 
     # --- 3. 통계 ---
     elif sel_menu == "📊 통계":
@@ -368,11 +403,10 @@ def main():
                     final_cols = [c for c in disp if c in t_list.columns]
                     st.dataframe(t_list[final_cols].style.apply(lambda r: ['background-color: #ffe6e6' if r['상태']=='❌ 결석' else '' for _ in r], axis=1), use_container_width=True)
 
-    # --- 4. 기도제목 (관리자: 주간 모아보기 적용) ---
+    # --- 4. 기도제목 ---
     elif sel_menu == "🙏 기도제목":
         st.subheader("기도제목 관리")
         
-        # [관리자 모드]
         if is_admin:
             st.markdown("### 🗓️ 주간 전체 기도제목 모아보기")
             c1, c2 = st.columns([1, 2])
@@ -380,7 +414,6 @@ def main():
             sun, sat = get_week_range(p_date)
             c2.caption(f"📅 조회 기간: {sun.strftime('%Y-%m-%d')} ~ {sat.strftime('%Y-%m-%d')}")
             
-            # 날짜 필터링
             df_prayer_stat = df_prayer.copy()
             df_prayer_stat["날짜"] = pd.to_datetime(df_prayer_stat["날짜"], errors='coerce')
             mask = (df_prayer_stat["날짜"] >= pd.Timestamp(sun)) & (df_prayer_stat["날짜"] <= pd.Timestamp(sat))
@@ -391,7 +424,6 @@ def main():
             else:
                 st.dataframe(weekly_prayers[["날짜", "소그룹", "이름", "내용"]], use_container_width=True, hide_index=True)
 
-        # [소그룹장 모드]
         else:
             all_g = sorted(df_members["소그룹"].unique())
             my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
@@ -416,7 +448,7 @@ def main():
                 for i, r in hist.iterrows():
                     st.info(f"**{r['날짜']}**: {r['내용']}")
 
-    # --- 5. 사역 보고 (관리자: 주간 모아보기 적용) ---
+    # --- 5. 사역 보고 ---
     elif sel_menu == "📨 사역 보고":
         st.subheader("📨 소그룹 사역 보고")
 
@@ -427,7 +459,6 @@ def main():
             sun, sat = get_week_range(r_date_adm)
             c2.caption(f"📅 조회 기간: {sun.strftime('%Y-%m-%d')} ~ {sat.strftime('%Y-%m-%d')}")
 
-            # 날짜 필터링
             df_rep_stat = df_reports.copy()
             df_rep_stat["날짜"] = pd.to_datetime(df_rep_stat["날짜"], errors='coerce')
             mask = (df_rep_stat["날짜"] >= pd.Timestamp(sun)) & (df_rep_stat["날짜"] <= pd.Timestamp(sat))
