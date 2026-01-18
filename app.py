@@ -3,6 +3,7 @@ import pandas as pd
 import datetime
 import calendar
 import gspread
+import extra_streamlit_components as stx # [설치필요] 쿠키 관리를 위한 라이브러리
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- [설정] 구글 시트 파일 이름 ---
@@ -14,42 +15,12 @@ st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_sta
 # --- [스타일 추가] 어르신들을 위한 큰 글씨 적용 ---
 st.markdown("""
     <style>
-    /* 1. 기본 본문 글자 키우기 */
-    html, body, p, li, .stMarkdown {
-        font-size: 20px !important;
-    }
-    
-    /* 2. 체크박스(출석 명단) 이름 아주 크게 & 굵게 */
-    .stCheckbox label p {
-        font-size: 24px !important;
-        font-weight: bold !important;
-        color: #1f1f1f;
-    }
-    
-    /* 3. 입력창, 날짜 선택, 드롭다운 글씨 */
-    .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] {
-        font-size: 20px !important;
-        height: 50px !important; /* 입력칸 높이도 편하게 */
-    }
-
-    /* 4. 저장 버튼 등 버튼 글씨 */
-    .stButton button {
-        font-size: 22px !important;
-        font-weight: bold !important;
-        padding: 10px 24px !important;
-    }
-
-    /* 5. 상단 메뉴 탭 글씨 */
-    div[role="radiogroup"] label {
-        font-size: 20px !important;
-    }
-    
-    /* 6. 표(DataFrame) 내부 글씨 (일부 브라우저 적용) */
-    div[data-testid="stDataFrame"] {
-        font-size: 18px !important;
-    }
-
-    /* 7. 헤더(제목) 크기 */
+    html, body, p, li, .stMarkdown { font-size: 20px !important; }
+    .stCheckbox label p { font-size: 24px !important; font-weight: bold !important; color: #1f1f1f; }
+    .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] { font-size: 20px !important; height: 50px !important; }
+    .stButton button { font-size: 22px !important; font-weight: bold !important; padding: 10px 24px !important; }
+    div[role="radiogroup"] label { font-size: 20px !important; }
+    div[data-testid="stDataFrame"] { font-size: 18px !important; }
     h1 { font-size: 42px !important; }
     h2 { font-size: 36px !important; }
     h3 { font-size: 28px !important; }
@@ -178,10 +149,34 @@ def draw_birthday_calendar(df_members):
                         for person in birthdays[str(day)]:
                             st.info(f"🎂{person}")
 
+# --- [핵심] 쿠키 매니저 초기화 ---
+# 이 함수는 쿠키를 읽고 쓰는 관리자를 만듭니다.
+@st.cache_resource(experimental_allow_widgets=True)
+def get_cookie_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_cookie_manager()
+
 # --- 로그인 시스템 ---
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
     st.session_state["user_info"] = None
+
+# [자동 로그인 로직]
+# 1. 쿠키가 있는지 확인합니다.
+cookie_user_id = cookie_manager.get(cookie="church_user_id")
+
+# 2. 로그인이 안 된 상태인데, 쿠키에 아이디가 남아있다면?
+if not st.session_state["logged_in"] and cookie_user_id:
+    df_users = load_data("users")
+    # 쿠키에 저장된 아이디로 유저 정보를 찾습니다.
+    matched_cookie_user = df_users[df_users["아이디"] == cookie_user_id]
+    
+    if not matched_cookie_user.empty:
+        # 정보가 맞으면 로그인 처리!
+        st.session_state["logged_in"] = True
+        st.session_state["user_info"] = matched_cookie_user.iloc[0].to_dict()
+        # (주의: 여기서 rerun을 하면 무한로딩 될 수 있으니 그냥 통과시킴)
 
 if "current_view" not in st.session_state:
     st.session_state["current_view"] = "🏠 홈"
@@ -197,6 +192,10 @@ def login(username, password):
     if not matched.empty:
         st.session_state["logged_in"] = True
         st.session_state["user_info"] = matched.iloc[0].to_dict()
+        
+        # [핵심] 로그인 성공 시 쿠키 굽기 (30일 동안 유지)
+        cookie_manager.set("church_user_id", username, expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
+        
         st.rerun()
     else:
         st.error("아이디 또는 비밀번호가 잘못되었습니다.")
@@ -205,6 +204,10 @@ def logout():
     st.session_state["logged_in"] = False
     st.session_state["user_info"] = None
     st.session_state["current_view"] = "🏠 홈"
+    
+    # [핵심] 로그아웃 시 쿠키 삭제
+    cookie_manager.delete("church_user_id")
+    
     st.rerun()
 
 # --- 메인 앱 ---
