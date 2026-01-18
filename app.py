@@ -64,7 +64,6 @@ def load_data(sheet_name):
     if not ws: return pd.DataFrame()
     data = ws.get_all_records()
     if not data:
-        # 빈 데이터일 때 기본 컬럼 정의
         if sheet_name == "members":
             return pd.DataFrame(columns=["이름", "성별", "생일", "전화번호", "주소", "가족ID", "소그룹", "비고"])
         elif sheet_name == "attendance_log":
@@ -83,7 +82,7 @@ def save_data(sheet_name, df):
         ws.update(range_name='A2', values=df.values.tolist())
         load_data.clear()
 
-# --- 3. 헬퍼 함수들 (로그인, 날짜 등) ---
+# --- 3. 헬퍼 함수들 ---
 def get_week_range(date_obj):
     idx = (date_obj.weekday() + 1) % 7
     start_sunday = date_obj - datetime.timedelta(days=idx)
@@ -129,7 +128,7 @@ def draw_birthday_calendar(df_members):
                     if str(day) in birthdays:
                         for p in birthdays[str(day)]: st.info(f"🎂{p}")
 
-# 로그인 처리를 main 밖으로 뺐습니다 (오류 방지)
+# 로그인 함수 (main 밖으로 분리)
 def process_login(username, password, cookie_manager):
     df_users = load_data("users")
     matched = df_users[(df_users["아이디"] == username) & (df_users["비밀번호"] == password)]
@@ -138,7 +137,7 @@ def process_login(username, password, cookie_manager):
         st.session_state["logged_in"] = True
         st.session_state["user_info"] = matched.iloc[0].to_dict()
         
-        # 쿠키 저장 (30일)
+        # 쿠키 저장 (30일 유효)
         expires = datetime.datetime.now() + datetime.timedelta(days=30)
         cookie_manager.set("church_user_id", username, expires_at=expires)
         st.rerun()
@@ -153,37 +152,36 @@ def process_logout(cookie_manager):
 
 # --- 4. 메인 앱 실행 ---
 def main():
-    # [핵심] 변수 초기화 (에러 방지용 안전장치)
-    # 이 부분 덕분에 UnboundLocalError가 절대 발생하지 않습니다.
+    # [핵심] 쿠키 매니저 초기화
+    cookie_manager = stx.CookieManager(key="church_cookies")
+    
+    # [안전장치] 변수 초기화 (UnboundLocalError 방지)
     df_stat = pd.DataFrame()
     target = pd.DataFrame()
     t_list = pd.DataFrame()
     w_df = pd.DataFrame()
 
-    # 쿠키 매니저 생성
-    cookie_manager = stx.CookieManager(key="church_cookies")
-    
     st.title("⛪ 회정교회 출석체크 시스템")
 
-    # 세션 초기화
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
         st.session_state["user_info"] = None
 
-    # [자동 로그인 체크]
+    # [수정] 자동 로그인 로직 (대기 시간 1초로 증가)
+    # 쿠키를 불러오는 시간을 충분히 주어 로그인이 풀리는 것을 방지
     if not st.session_state["logged_in"]:
-        # 아주 짧은 대기 (쿠키 로딩 시간 확보)
-        time.sleep(0.3)
-        cookie_id = cookie_manager.get(cookie="church_user_id")
-        if cookie_id:
+        time.sleep(1.0) # 0.5 -> 1.0초로 늘림
+        cookie_user_id = cookie_manager.get(cookie="church_user_id")
+        
+        if cookie_user_id:
             df_users = load_data("users")
-            user_match = df_users[df_users["아이디"] == cookie_id]
+            user_match = df_users[df_users["아이디"] == cookie_user_id]
             if not user_match.empty:
                 st.session_state["logged_in"] = True
                 st.session_state["user_info"] = user_match.iloc[0].to_dict()
                 st.rerun()
 
-    # --- 사이드바 (로그인 창) ---
+    # --- 사이드바 (로그인) ---
     with st.sidebar:
         st.header("로그인")
         if not st.session_state["logged_in"]:
@@ -199,12 +197,12 @@ def main():
             if st.button("로그아웃", key="logout_btn"):
                 process_logout(cookie_manager)
 
-    # 비로그인 시 중단
+    # 비로그인 차단
     if not st.session_state["logged_in"]:
         st.warning("👈 왼쪽 사이드바에서 로그인해주세요.")
         st.stop()
 
-    # --- 로그인 후 데이터 로드 ---
+    # --- 데이터 로드 ---
     current_user = st.session_state["user_info"]
     is_admin = (current_user["역할"] == "admin")
     
@@ -212,16 +210,16 @@ def main():
     df_att = load_data("attendance_log")
     df_prayer = load_data("prayer_log")
 
-    # 메뉴 구성
+    # 메뉴
     menu_list = ["🏠 홈", "📋 출석체크", "📊 통계", "🙏 기도제목", "👥 명단 관리"]
     if is_admin: menu_list.append("🔐 계정 관리")
     
     selected_menu = st.radio("메뉴 이동", menu_list, horizontal=True, label_visibility="collapsed", key="main_nav")
     st.divider()
 
-    # --- 탭별 기능 구현 ---
+    # --- 탭별 기능 ---
 
-    # 1. 홈 (대시보드)
+    # 1. 홈
     if selected_menu == "🏠 홈":
         st.subheader("이번 달 주요 일정")
         draw_birthday_calendar(df_members)
@@ -232,25 +230,21 @@ def main():
         c1, c2 = st.columns(2)
         check_date = c1.date_input("날짜", datetime.date.today(), key="att_date")
         
-        # 요일 표시
-        days_kor = ["(월)", "(화)", "(수)", "(목)", "(금)", "(토)", "(일)"]
-        day_txt = days_kor[check_date.weekday()]
-        if day_txt == "(일)": c1.markdown(f":red[**오늘은 {day_txt}요일**]")
-        else: c1.caption(f"**{day_txt}요일**")
+        d_names = ["(월)", "(화)", "(수)", "(목)", "(금)", "(토)", "(일)"]
+        day_str = d_names[check_date.weekday()]
+        if day_str == "(일)": c1.markdown(f":red[**오늘은 {day_str}요일**]")
+        else: c1.caption(f"**{day_str}요일**")
 
         meetings = ["주일 1부", "주일 2부", "주일 오후", "소그룹 모임", "수요예배", "금요철야", "새벽기도"]
         meeting_name = c2.selectbox("모임", meetings, key="att_meet")
 
-        # 소그룹 선택
         all_grps = sorted(df_members["소그룹"].unique())
         if is_admin:
             grp = st.selectbox("소그룹(관리자)", ["전체 보기"] + all_grps, key="att_grp_admin")
         else:
             my_grps = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
             if len(my_grps) > 1: grp = st.selectbox("소그룹 선택", my_grps, key="att_grp_ldr")
-            elif len(my_grps) == 1: 
-                grp = my_grps[0]
-                st.info(f"담당: {grp}")
+            elif len(my_grps) == 1: grp = my_grps[0]; st.info(f"담당: {grp}")
             else: grp = None
 
         if grp:
@@ -268,31 +262,26 @@ def main():
                 for i, row in targets.iterrows():
                     name = row["이름"]
                     is_checked = name in att_ids
-                    # 유니크 키로 체크박스 충돌 방지
                     ukey = f"chk_{check_date}_{meeting_name}_{grp}_{name}"
                     status[name] = cols[i%3].checkbox(name, value=is_checked, key=ukey)
                 
                 if st.form_submit_button("저장하기", use_container_width=True):
-                    # 기존 데이터 삭제 후 재저장 (덮어쓰기)
                     mask = (df_att["날짜"]==str(check_date)) & (df_att["모임명"]==meeting_name) & (df_att["소그룹"]==grp)
                     df_clean = df_att[~mask]
-                    
                     new_rows = []
                     for n, is_on in status.items():
                         if is_on:
                             new_rows.append({"날짜":str(check_date), "모임명":meeting_name, "이름":n, "소그룹":grp, "출석여부":"출석"})
-                    
                     final = pd.concat([df_clean, pd.DataFrame(new_rows)], ignore_index=True)
                     save_data("attendance_log", final)
                     st.success("저장 완료!")
                     st.rerun()
 
-    # 3. 통계
+    # 3. 통계 (정렬 문제 완벽 해결)
     elif selected_menu == "📊 통계":
         st.subheader("📊 주간 사역 통계")
         if df_att.empty: st.info("데이터가 없습니다.")
         else:
-            # 원본 보호를 위해 복사본 사용 (에러 방지)
             df_stat = df_att.copy()
             df_stat["날짜"] = pd.to_datetime(df_stat["날짜"], errors='coerce')
             
@@ -309,10 +298,8 @@ def main():
                 if len(my_grps) > 1: s_grp = c2.selectbox("그룹", my_grps, key="stat_grp_ldr")
                 else: s_grp = my_grps[0]; c2.info(f"담당: {s_grp}")
 
-            # 날짜 필터링
             mask = (df_stat["날짜"] >= pd.Timestamp(sun)) & (df_stat["날짜"] <= pd.Timestamp(sat))
             w_df = df_stat[mask]
-            
             if s_grp != "전체 합계": w_df = w_df[w_df["소그룹"] == s_grp]
 
             if w_df.empty: st.warning("해당 기간 기록 없음")
@@ -324,7 +311,6 @@ def main():
                 st.divider()
                 st.markdown(f"**📋 {s_grp} 명단 현황**")
                 
-                # 명단 가져오기
                 if s_grp == "전체 합계":
                     if is_admin: t_list = df_members.copy()
                     else:
@@ -337,16 +323,20 @@ def main():
                     view_by_family = st.checkbox("👨‍👩‍👧‍👦 가족별로 묶어보기", key="stat_fam_view")
                     
                     att_names = w_df["이름"].unique()
-                    t_list["상태"] = t_list["이름"].apply(lambda x: "✅ 출석" if x in att_names else "❌ 결석")
                     
-                    # 정렬 및 표시
+                    # [수정] 정렬 로직 개선: 출석(0)이 결석(1)보다 위에 오게 함
+                    t_list["정렬키"] = t_list["이름"].apply(lambda x: 0 if x in att_names else 1)
+                    t_list["상태"] = t_list["정렬키"].apply(lambda x: "✅ 출석" if x == 0 else "❌ 결석")
+                    
                     if view_by_family:
-                        t_list = t_list.copy() # 안전하게 복사
+                        t_list = t_list.copy()
                         t_list["가족ID_정렬"] = pd.to_numeric(t_list["가족ID"], errors='coerce').fillna(99999)
+                        # 가족ID로 먼저 묶고, 그 안에서 이름순
                         t_list = t_list.sort_values(by=["가족ID_정렬", "이름"])
                         disp_cols = ["가족ID", "이름", "상태", "소그룹", "전화번호"]
                     else:
-                        t_list = t_list.sort_values(by=["상태", "이름"], ascending=[False, True])
+                        # [핵심 수정] 정렬키(0=출석, 1=결석) 오름차순 -> 출석이 맨 위로 옴
+                        t_list = t_list.sort_values(by=["정렬키", "이름"], ascending=[True, True])
                         disp_cols = ["이름", "상태", "소그룹", "전화번호"]
                     
                     final_cols = [c for c in disp_cols if c in t_list.columns]
@@ -390,30 +380,25 @@ def main():
     # 5. 명단 관리
     elif selected_menu == "👥 명단 관리":
         st.subheader("명단 관리")
-        
-        if is_admin:
-            target = df_members
+        if is_admin: target = df_members
         else:
             my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
             target = df_members[df_members["소그룹"].isin(my_gs)]
             st.info(f"담당: {', '.join(my_gs)}")
 
-        # 가족 기능 UI
         col_opt1, col_opt2 = st.columns([1, 3])
         use_fam_view = col_opt1.checkbox("👨‍👩‍👧‍👦 가족끼리 묶어보기", value=True, key="mem_fam_chk")
         
         if use_fam_view and not target.empty:
-            target = target.copy() # 원본 보호
+            target = target.copy()
             target["가족ID_정렬"] = pd.to_numeric(target["가족ID"], errors='coerce').fillna(99999)
             target = target.sort_values(by=["가족ID_정렬", "이름"])
             del target["가족ID_정렬"]
-            st.caption("💡 팁: '가족ID' 칸에 같은 숫자를 적으면 같은 가족으로 묶입니다.")
+            st.caption("💡 '가족ID'가 같으면 묶입니다.")
 
         edited = st.data_editor(target, num_rows="dynamic", use_container_width=True, key="mem_edit")
-        
         if st.button("저장", key="mem_save"):
-            if is_admin:
-                save_data("members", edited)
+            if is_admin: save_data("members", edited)
             else:
                 my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
                 mask = df_members["소그룹"].isin(my_gs)
