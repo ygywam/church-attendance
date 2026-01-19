@@ -124,6 +124,10 @@ def get_week_range(date_obj):
     end_saturday = start_sunday + datetime.timedelta(days=6)
     return start_sunday, end_saturday
 
+def get_day_name(date_obj):
+    days = ["(월)", "(화)", "(수)", "(목)", "(금)", "(토)", "(일)"]
+    return days[date_obj.weekday()]
+
 def draw_notice_section(is_admin, current_user_name):
     df_notices = load_data("notices")
     if not df_notices.empty:
@@ -262,12 +266,12 @@ def main():
         st.subheader("이번 달 주요 일정")
         draw_birthday_calendar(df_members)
 
-    # --- 2. 출석체크 (요일 자동인식) ---
+    # --- 2. 출석체크 (요일 자동인식 + 틀 고정) ---
     elif sel_menu == "📋 출석체크":
         st.subheader("📋 요일별 맞춤 출석체크")
         
         c1, c2 = st.columns(2)
-        chk_date = c1.date_input("날짜 선택 (해당 요일 모임이 자동 표시됨)", datetime.date.today())
+        chk_date = c1.date_input("날짜 선택", datetime.date.today())
         
         weekday_idx = chk_date.weekday()
         days_kor = ["월", "화", "수", "목", "금", "토", "일"]
@@ -306,9 +310,10 @@ def main():
                 
                 df_grid = pd.DataFrame(grid_data)
 
+                # [수정] 틀 고정(Pinned) 적용
                 column_config = {
-                    "이름": st.column_config.TextColumn("이름", disabled=True),
-                    "소그룹": st.column_config.TextColumn("소그룹", disabled=True)
+                    "이름": st.column_config.TextColumn("이름", disabled=True, pinned=True),
+                    "소그룹": st.column_config.TextColumn("소그룹", disabled=True, pinned=True)
                 }
                 for col in target_meetings:
                     column_config[col] = st.column_config.CheckboxColumn(col, default=False)
@@ -341,7 +346,7 @@ def main():
                     save_data("attendance_log", final_df)
                     st.success(f"✅ {chk_date} ({day_str}) 출석 저장 완료!"); st.rerun()
 
-    # --- 3. [수정] 통계 (개인별 상세 수정 추가) ---
+    # --- 3. [수정] 통계 (요일 표기 + 틀 고정) ---
     elif sel_menu == "📊 통계":
         st.subheader("📊 출석 누적 현황 및 상세 조회")
         if df_att.empty: st.info("데이터가 없습니다.")
@@ -376,6 +381,8 @@ def main():
                     for m_type in ALL_MEETINGS:
                         if m_type not in pivot_table.columns: pivot_table[m_type] = 0
                     pivot_table = pivot_table[[c for c in ALL_MEETINGS if c in pivot_table.columns]]
+                    
+                    # [수정] 통계 표에도 틀 고정 적용 (Index는 기본 고정됨)
                     st.dataframe(pivot_table, use_container_width=True)
                     
                     st.divider()
@@ -385,16 +392,15 @@ def main():
                         selected_name = st.selectbox("수정할 이름 선택", name_list)
                         
                         if selected_name:
-                            # [핵심] 수정 가능한 데이터 에디터로 변경
                             person_log = w_df[w_df["이름"] == selected_name].sort_values(by="날짜", ascending=False)
-                            person_log["날짜"] = person_log["날짜"].dt.strftime("%Y-%m-%d")
+                            
+                            # [수정] 날짜에 요일 추가 (YYYY-MM-DD (월))
+                            person_log["날짜"] = person_log["날짜"].apply(lambda x: f"{x.strftime('%Y-%m-%d')} {get_day_name(x)}")
                             
                             st.info(f"💡 {selected_name}님의 기록을 직접 수정하거나 추가할 수 있습니다. (체크해제 시 삭제됨)")
                             
-                            # 수정용 데이터프레임 (필요한 컬럼만)
                             edit_target = person_log[["날짜", "모임명", "소그룹"]]
                             
-                            # data_editor로 표시 (행 추가/삭제 가능)
                             edited_log = st.data_editor(
                                 edit_target, 
                                 num_rows="dynamic", 
@@ -403,25 +409,19 @@ def main():
                             )
                             
                             if st.button("💾 수정사항 저장하기", use_container_width=True):
-                                # 1. 해당 사람의 기존 기록 전체 삭제 (조회 기간 내)
-                                # (단, 여기서는 전체 기간 데이터를 건드릴 수 있으므로, 원본 df_att에서 해당 이름 데이터만 교체하는 방식이 안전)
-                                
-                                # 원본에서 '이 사람'의 데이터만 뺀 나머지 보존
                                 df_rest = df_att[df_att["이름"] != selected_name]
-                                
-                                # 2. 에디터에서 수정된 내용으로 새 데이터 생성
                                 new_person_data = []
                                 for _, row in edited_log.iterrows():
-                                    if row["날짜"] and row["모임명"]: # 빈칸 방지
+                                    if row["날짜"] and row["모임명"]:
+                                        # 요일 부분 제거하고 날짜만 저장 (YYYY-MM-DD (월) -> YYYY-MM-DD)
+                                        clean_date = row["날짜"].split(" ")[0]
                                         new_person_data.append({
-                                            "날짜": str(row["날짜"]),
+                                            "날짜": clean_date,
                                             "모임명": row["모임명"],
                                             "이름": selected_name,
-                                            "소그룹": row["소그룹"], # 소그룹 정보 유지
+                                            "소그룹": row["소그룹"],
                                             "출석여부": "출석"
                                         })
-                                
-                                # 3. 합치기
                                 final_df = pd.concat([df_rest, pd.DataFrame(new_person_data)], ignore_index=True)
                                 save_data("attendance_log", final_df)
                                 st.success(f"✅ {selected_name}님의 출석 기록이 업데이트되었습니다!"); st.rerun()
@@ -522,7 +522,13 @@ def main():
                 del target["가족ID_정렬"]
                 st.caption("💡 가족ID가 같으면 묶입니다.")
 
-        edited = st.data_editor(target, num_rows="dynamic", use_container_width=True)
+        # [수정] 명단 관리에서도 이름/소그룹 틀 고정 (편집 편의성)
+        col_conf_mem = {
+            "이름": st.column_config.TextColumn(pinned=True),
+            "소그룹": st.column_config.TextColumn(pinned=True)
+        }
+        edited = st.data_editor(target, num_rows="dynamic", use_container_width=True, column_config=col_conf_mem)
+        
         if st.button("저장"):
             if is_admin: save_data("members", edited)
             else:
