@@ -10,16 +10,29 @@ from oauth2client.service_account import ServiceAccountCredentials
 # --- [설정] 구글 시트 파일 이름 ---
 SHEET_NAME = "교회출석데이터"
 
-# --- [설정] 요일별 모임 리스트 정의 ---
+# --- [설정] 부서별 표시할 모임 정의 ---
+# 1. 장년(기본)
+COLS_ADULT = ["주일 1부", "주일 2부", "주일 오후", "소그룹 모임"]
+# 2. 중고등부
+COLS_YOUTH = ["주일 1부", "주일 2부", "주일 오후", "중고등부"]
+# 3. 청년부
+COLS_YOUNG = ["주일 1부", "주일 2부", "주일 오후", "청년부"]
+# 4. 주일학교 (단독)
+COLS_KIDS = ["주일학교"]
+
+# 전체 모임 리스트 (요일별 필터링 및 통계용)
+# 일요일 모임 전체 집합
+SUNDAY_ALL = list(set(COLS_ADULT + COLS_YOUTH + COLS_YOUNG + COLS_KIDS))
+
+# 요일별 설정 (0:월 ~ 6:일)
 MEETING_CONFIG = {
-    6: ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임"], # 6 = 일요일
-    2: ["수요예배"], # 2 = 수요일
-    4: ["금요철야"]  # 4 = 금요일
+    6: SUNDAY_ALL, # 일요일 (자동으로 부서별 필터링됨)
+    2: ["수요예배"], # 수요일
+    4: ["금요철야"]  # 금요일
 }
-# 전체 모임 리스트 (통계용)
-ALL_MEETINGS = []
-for m_list in MEETING_CONFIG.values():
-    ALL_MEETINGS.extend(m_list)
+
+# 통계용 전체 컬럼 순서
+ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
 st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_state="collapsed")
@@ -127,6 +140,27 @@ def get_week_range(date_obj):
 def get_day_name(date_obj):
     days = ["(월)", "(화)", "(수)", "(목)", "(금)", "(토)", "(일)"]
     return days[date_obj.weekday()]
+
+# [핵심] 부서별 컬럼 필터링 로직
+def get_target_columns(weekday_idx, group_name):
+    # 1. 일요일이 아니면 (수/금) 고정된 모임 리턴
+    if weekday_idx != 6:
+        return MEETING_CONFIG.get(weekday_idx, [])
+    
+    # 2. 일요일인 경우, 그룹 이름에 따라 컬럼 분기
+    if group_name == "전체 보기":
+        return SUNDAY_ALL # 관리자용 전체
+    
+    # 그룹명에 포함된 키워드로 판단
+    g_name = str(group_name)
+    if "중고등" in g_name:
+        return COLS_YOUTH
+    elif "청년" in g_name:
+        return COLS_YOUNG
+    elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name:
+        return COLS_KIDS
+    else:
+        return COLS_ADULT # 기본 장년
 
 def draw_notice_section(is_admin, current_user_name):
     df_notices = load_data("notices")
@@ -266,7 +300,7 @@ def main():
         st.subheader("이번 달 주요 일정")
         draw_birthday_calendar(df_members)
 
-    # --- 2. 출석체크 (요일 자동인식 + 틀 고정) ---
+    # --- 2. 출석체크 (부서별 맞춤 + 이름만 고정) ---
     elif sel_menu == "📋 출석체크":
         st.subheader("📋 요일별 맞춤 출석체크")
         
@@ -279,8 +313,6 @@ def main():
         
         c1.info(f"선택일: {chk_date.strftime('%Y-%m-%d')} ({day_str})")
 
-        target_meetings = MEETING_CONFIG.get(weekday_idx, [])
-
         all_grps = sorted(df_members["소그룹"].unique())
         if is_admin: grp = c2.selectbox("소그룹(관리자)", ["전체 보기"] + all_grps)
         else:
@@ -288,6 +320,9 @@ def main():
             if len(my_grps) > 1: grp = c2.selectbox("소그룹 선택", my_grps)
             elif len(my_grps) == 1: grp = my_grps[0]; c2.info(f"담당: {grp}")
             else: grp = None
+
+        # [핵심] 부서 및 요일에 따른 모임 리스트 가져오기
+        target_meetings = get_target_columns(weekday_idx, grp)
 
         if not target_meetings:
             st.warning(f"📌 {day_str}요일에는 예정된 정기 모임이 없습니다.")
@@ -310,15 +345,15 @@ def main():
                 
                 df_grid = pd.DataFrame(grid_data)
 
-                # [수정] 틀 고정(Pinned) 적용
+                # [수정] '이름' 열만 고정 (소그룹은 고정 해제하여 공간 확보)
                 column_config = {
                     "이름": st.column_config.TextColumn("이름", disabled=True, pinned=True),
-                    "소그룹": st.column_config.TextColumn("소그룹", disabled=True, pinned=True)
+                    "소그룹": st.column_config.TextColumn("소그룹", disabled=True)
                 }
                 for col in target_meetings:
                     column_config[col] = st.column_config.CheckboxColumn(col, default=False)
 
-                st.success(f"📌 오늘은 **{', '.join(target_meetings)}** 출석을 체크합니다.")
+                st.success(f"📌 {grp} / {', '.join(target_meetings)} 출석을 체크합니다.")
                 edited_df = st.data_editor(df_grid, column_config=column_config, hide_index=True, use_container_width=True)
 
                 if st.button("✅ 출석 저장하기", use_container_width=True):
@@ -346,7 +381,7 @@ def main():
                     save_data("attendance_log", final_df)
                     st.success(f"✅ {chk_date} ({day_str}) 출석 저장 완료!"); st.rerun()
 
-    # --- 3. [수정] 통계 (요일 표기 + 틀 고정) ---
+    # --- 3. 통계 (요일 표기 + 틀 고정) ---
     elif sel_menu == "📊 통계":
         st.subheader("📊 출석 누적 현황 및 상세 조회")
         if df_att.empty: st.info("데이터가 없습니다.")
@@ -377,12 +412,15 @@ def main():
                 else:
                     st.divider()
                     st.markdown(f"##### 📈 {s_grp} 출석 누적 현황표")
-                    pivot_table = pd.crosstab(w_df["이름"], w_df["모임명"])
-                    for m_type in ALL_MEETINGS:
-                        if m_type not in pivot_table.columns: pivot_table[m_type] = 0
-                    pivot_table = pivot_table[[c for c in ALL_MEETINGS if c in pivot_table.columns]]
                     
-                    # [수정] 통계 표에도 틀 고정 적용 (Index는 기본 고정됨)
+                    # 피벗 테이블
+                    pivot_table = pd.crosstab(w_df["이름"], w_df["모임명"])
+                    
+                    # 컬럼 정렬 (ALL_MEETINGS_ORDERED 기준)
+                    existing_cols = [c for c in ALL_MEETINGS_ORDERED if c in pivot_table.columns]
+                    pivot_table = pivot_table[existing_cols]
+                    
+                    # 통계 표: 이름만 고정 (Index는 기본 고정됨)
                     st.dataframe(pivot_table, use_container_width=True)
                     
                     st.divider()
@@ -393,33 +431,22 @@ def main():
                         
                         if selected_name:
                             person_log = w_df[w_df["이름"] == selected_name].sort_values(by="날짜", ascending=False)
-                            
-                            # [수정] 날짜에 요일 추가 (YYYY-MM-DD (월))
                             person_log["날짜"] = person_log["날짜"].apply(lambda x: f"{x.strftime('%Y-%m-%d')} {get_day_name(x)}")
                             
-                            st.info(f"💡 {selected_name}님의 기록을 직접 수정하거나 추가할 수 있습니다. (체크해제 시 삭제됨)")
-                            
+                            st.info(f"💡 {selected_name}님의 기록을 직접 수정하거나 추가할 수 있습니다.")
                             edit_target = person_log[["날짜", "모임명", "소그룹"]]
                             
-                            edited_log = st.data_editor(
-                                edit_target, 
-                                num_rows="dynamic", 
-                                use_container_width=True,
-                                key="stat_editor"
-                            )
+                            edited_log = st.data_editor(edit_target, num_rows="dynamic", use_container_width=True, key="stat_editor")
                             
                             if st.button("💾 수정사항 저장하기", use_container_width=True):
                                 df_rest = df_att[df_att["이름"] != selected_name]
                                 new_person_data = []
                                 for _, row in edited_log.iterrows():
                                     if row["날짜"] and row["모임명"]:
-                                        # 요일 부분 제거하고 날짜만 저장 (YYYY-MM-DD (월) -> YYYY-MM-DD)
                                         clean_date = row["날짜"].split(" ")[0]
                                         new_person_data.append({
-                                            "날짜": clean_date,
-                                            "모임명": row["모임명"],
-                                            "이름": selected_name,
-                                            "소그룹": row["소그룹"],
+                                            "날짜": clean_date, "모임명": row["모임명"],
+                                            "이름": selected_name, "소그룹": row["소그룹"],
                                             "출석여부": "출석"
                                         })
                                 final_df = pd.concat([df_rest, pd.DataFrame(new_person_data)], ignore_index=True)
@@ -522,10 +549,9 @@ def main():
                 del target["가족ID_정렬"]
                 st.caption("💡 가족ID가 같으면 묶입니다.")
 
-        # [수정] 명단 관리에서도 이름/소그룹 틀 고정 (편집 편의성)
+        # [수정] 명단 관리: 이름만 고정 (소그룹은 고정 해제)
         col_conf_mem = {
-            "이름": st.column_config.TextColumn(pinned=True),
-            "소그룹": st.column_config.TextColumn(pinned=True)
+            "이름": st.column_config.TextColumn(pinned=True)
         }
         edited = st.data_editor(target, num_rows="dynamic", use_container_width=True, column_config=col_conf_mem)
         
