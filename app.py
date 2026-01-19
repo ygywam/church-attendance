@@ -11,22 +11,17 @@ from oauth2client.service_account import ServiceAccountCredentials
 SHEET_NAME = "교회출석데이터"
 
 # --- [설정] 부서별 표시할 모임 정의 ---
-# 1. 장년(기본)
 COLS_ADULT = ["주일 1부", "주일 2부", "주일 오후", "소그룹 모임"]
-# 2. 중고등부
 COLS_YOUTH = ["주일 1부", "주일 2부", "주일 오후", "중고등부"]
-# 3. 청년부
 COLS_YOUNG = ["주일 1부", "주일 2부", "주일 오후", "청년부"]
-# 4. 주일학교 (단독)
 COLS_KIDS = ["주일학교"]
 
-# 전체 모임 리스트 (요일별 필터링 및 통계용)
-# 일요일 모임 전체 집합
+# 전체 모임 리스트
 SUNDAY_ALL = list(set(COLS_ADULT + COLS_YOUTH + COLS_YOUNG + COLS_KIDS))
 
-# 요일별 설정 (0:월 ~ 6:일)
+# 요일별 설정
 MEETING_CONFIG = {
-    6: SUNDAY_ALL, # 일요일 (자동으로 부서별 필터링됨)
+    6: SUNDAY_ALL, # 일요일
     2: ["수요예배"], # 수요일
     4: ["금요철야"]  # 금요일
 }
@@ -141,26 +136,50 @@ def get_day_name(date_obj):
     days = ["(월)", "(화)", "(수)", "(목)", "(금)", "(토)", "(일)"]
     return days[date_obj.weekday()]
 
-# [핵심] 부서별 컬럼 필터링 로직
 def get_target_columns(weekday_idx, group_name):
-    # 1. 일요일이 아니면 (수/금) 고정된 모임 리턴
     if weekday_idx != 6:
         return MEETING_CONFIG.get(weekday_idx, [])
     
-    # 2. 일요일인 경우, 그룹 이름에 따라 컬럼 분기
-    if group_name == "전체 보기":
-        return SUNDAY_ALL # 관리자용 전체
+    if group_name == "전체 보기": return SUNDAY_ALL
     
-    # 그룹명에 포함된 키워드로 판단
     g_name = str(group_name)
-    if "중고등" in g_name:
-        return COLS_YOUTH
-    elif "청년" in g_name:
-        return COLS_YOUNG
-    elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name:
-        return COLS_KIDS
-    else:
-        return COLS_ADULT # 기본 장년
+    if "중고등" in g_name: return COLS_YOUTH
+    elif "청년" in g_name: return COLS_YOUNG
+    elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name: return COLS_KIDS
+    else: return COLS_ADULT
+
+# [추가] 사용설명서 렌더링 함수
+def draw_manual_tab():
+    st.markdown("""
+    ### 📘 회정교회 출석체크 시스템 가이드
+    
+    **1. ⚠️ 주의사항**
+    * 작업 중에 **새로고침(F5)**을 하면 로그인이 풀립니다. 저장하기 전에는 주의해주세요.
+    * 아이디/비번은 관리자에게 문의해주세요.
+
+    ---
+    
+    **2. 📋 출석체크 사용법**
+    * **날짜 선택:** 일요일/수요일/금요일을 선택하면 해당되는 모임만 자동으로 나옵니다.
+    * **부서 자동 인식:** 소그룹 이름에 따라(중고등부, 청년부 등) 체크할 항목이 자동으로 바뀝니다.
+    * **틀 고정:** 화면을 옆으로 밀어도 **'이름'**은 왼쪽에 고정됩니다.
+    * **저장:** 체크 후 반드시 하단의 **[저장하기]** 버튼을 눌러주세요.
+
+    ---
+
+    **3. 📊 통계 및 수정**
+    * 기간을 설정하여 누적 출석 현황을 볼 수 있습니다.
+    * 표 아래에서 **이름을 선택**하면, 상세 기록을 조회하고 **수정/삭제/추가**할 수 있습니다.
+
+    ---
+
+    **4. 👥 명단 관리 (소그룹명 규칙)**
+    * 시스템이 부서를 인식하도록 소그룹명에 다음 단어를 포함해주세요.
+    * **중고등부:** `중고등` (예: 중고등부 1반)
+    * **청년부:** `청년` (예: 청년부)
+    * **주일학교:** `주일학교`, `유초등`, `유치부`
+    * **장년:** 위 단어 없음 (예: 1조)
+    """)
 
 def draw_notice_section(is_admin, current_user_name):
     df_notices = load_data("notices")
@@ -288,7 +307,8 @@ def main():
     df_prayer = load_data("prayer_log")
     df_reports = load_data("reports")
 
-    menu = ["🏠 홈", "📋 출석체크", "📊 통계", "🙏 기도제목", "📨 사역 보고", "👥 명단 관리"]
+    # [수정] 메뉴에 사용설명서 추가
+    menu = ["🏠 홈", "📖 사용설명서", "📋 출석체크", "📊 통계", "🙏 기도제목", "📨 사역 보고", "👥 명단 관리"]
     if is_admin: menu.append("🔐 계정 관리")
     
     sel_menu = st.radio("메뉴", menu, horizontal=True, label_visibility="collapsed")
@@ -300,7 +320,11 @@ def main():
         st.subheader("이번 달 주요 일정")
         draw_birthday_calendar(df_members)
 
-    # --- 2. 출석체크 (부서별 맞춤 + 이름만 고정) ---
+    # --- 2. [추가] 사용설명서 ---
+    elif sel_menu == "📖 사용설명서":
+        draw_manual_tab()
+
+    # --- 3. 출석체크 (부서별 맞춤 + 이름만 고정) ---
     elif sel_menu == "📋 출석체크":
         st.subheader("📋 요일별 맞춤 출석체크")
         
@@ -321,7 +345,6 @@ def main():
             elif len(my_grps) == 1: grp = my_grps[0]; c2.info(f"담당: {grp}")
             else: grp = None
 
-        # [핵심] 부서 및 요일에 따른 모임 리스트 가져오기
         target_meetings = get_target_columns(weekday_idx, grp)
 
         if not target_meetings:
@@ -345,7 +368,7 @@ def main():
                 
                 df_grid = pd.DataFrame(grid_data)
 
-                # [수정] '이름' 열만 고정 (소그룹은 고정 해제하여 공간 확보)
+                # 이름 열 고정
                 column_config = {
                     "이름": st.column_config.TextColumn("이름", disabled=True, pinned=True),
                     "소그룹": st.column_config.TextColumn("소그룹", disabled=True)
@@ -381,7 +404,7 @@ def main():
                     save_data("attendance_log", final_df)
                     st.success(f"✅ {chk_date} ({day_str}) 출석 저장 완료!"); st.rerun()
 
-    # --- 3. 통계 (요일 표기 + 틀 고정) ---
+    # --- 4. 통계 ---
     elif sel_menu == "📊 통계":
         st.subheader("📊 출석 누적 현황 및 상세 조회")
         if df_att.empty: st.info("데이터가 없습니다.")
@@ -412,15 +435,10 @@ def main():
                 else:
                     st.divider()
                     st.markdown(f"##### 📈 {s_grp} 출석 누적 현황표")
-                    
-                    # 피벗 테이블
                     pivot_table = pd.crosstab(w_df["이름"], w_df["모임명"])
-                    
-                    # 컬럼 정렬 (ALL_MEETINGS_ORDERED 기준)
-                    existing_cols = [c for c in ALL_MEETINGS_ORDERED if c in pivot_table.columns]
-                    pivot_table = pivot_table[existing_cols]
-                    
-                    # 통계 표: 이름만 고정 (Index는 기본 고정됨)
+                    for m_type in ALL_MEETINGS_ORDERED:
+                        if m_type not in pivot_table.columns: pivot_table[m_type] = 0
+                    pivot_table = pivot_table[[c for c in ALL_MEETINGS_ORDERED if c in pivot_table.columns]]
                     st.dataframe(pivot_table, use_container_width=True)
                     
                     st.divider()
@@ -432,10 +450,8 @@ def main():
                         if selected_name:
                             person_log = w_df[w_df["이름"] == selected_name].sort_values(by="날짜", ascending=False)
                             person_log["날짜"] = person_log["날짜"].apply(lambda x: f"{x.strftime('%Y-%m-%d')} {get_day_name(x)}")
-                            
-                            st.info(f"💡 {selected_name}님의 기록을 직접 수정하거나 추가할 수 있습니다.")
+                            st.info(f"💡 {selected_name}님의 기록을 수정하거나 추가할 수 있습니다.")
                             edit_target = person_log[["날짜", "모임명", "소그룹"]]
-                            
                             edited_log = st.data_editor(edit_target, num_rows="dynamic", use_container_width=True, key="stat_editor")
                             
                             if st.button("💾 수정사항 저장하기", use_container_width=True):
@@ -451,9 +467,9 @@ def main():
                                         })
                                 final_df = pd.concat([df_rest, pd.DataFrame(new_person_data)], ignore_index=True)
                                 save_data("attendance_log", final_df)
-                                st.success(f"✅ {selected_name}님의 출석 기록이 업데이트되었습니다!"); st.rerun()
+                                st.success(f"✅ {selected_name}님의 기록 업데이트 완료!"); st.rerun()
 
-    # --- 4. 기도제목 ---
+    # --- 5. 기도제목 ---
     elif sel_menu == "🙏 기도제목":
         st.subheader("기도제목 관리")
         if is_admin:
@@ -493,7 +509,7 @@ def main():
                 for i, r in hist.iterrows():
                     st.info(f"**{r['날짜']}**: {r['내용']}")
 
-    # --- 5. 사역 보고 ---
+    # --- 6. 사역 보고 ---
     elif sel_menu == "📨 사역 보고":
         st.subheader("📨 소그룹 사역 보고")
         if is_admin:
@@ -532,7 +548,7 @@ def main():
                 for i, row in my_r.sort_values(by="날짜", ascending=False).iterrows():
                     st.text(f"📅 {row['날짜']}"); st.info(row['내용'])
 
-    # --- 6. 명단 관리 ---
+    # --- 7. 명단 관리 ---
     elif sel_menu == "👥 명단 관리":
         st.subheader("명단 관리")
         if is_admin: target = df_members
@@ -549,7 +565,6 @@ def main():
                 del target["가족ID_정렬"]
                 st.caption("💡 가족ID가 같으면 묶입니다.")
 
-        # [수정] 명단 관리: 이름만 고정 (소그룹은 고정 해제)
         col_conf_mem = {
             "이름": st.column_config.TextColumn(pinned=True)
         }
@@ -564,7 +579,7 @@ def main():
                 save_data("members", pd.concat([others, edited], ignore_index=True))
             st.success("저장 완료!"); st.rerun()
 
-    # --- 7. 계정 관리 ---
+    # --- 8. 계정 관리 ---
     elif sel_menu == "🔐 계정 관리" and is_admin:
         st.subheader("계정 관리")
         e_users = st.data_editor(load_data("users"), num_rows="dynamic", use_container_width=True)
