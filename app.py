@@ -262,21 +262,19 @@ def main():
         st.subheader("이번 달 주요 일정")
         draw_birthday_calendar(df_members)
 
-    # --- 2. [완전 개편] 출석체크 (요일 자동인식) ---
+    # --- 2. 출석체크 (요일 자동인식) ---
     elif sel_menu == "📋 출석체크":
         st.subheader("📋 요일별 맞춤 출석체크")
         
         c1, c2 = st.columns(2)
         chk_date = c1.date_input("날짜 선택 (해당 요일 모임이 자동 표시됨)", datetime.date.today())
         
-        # [핵심] 요일 계산 (0:월, 1:화, 2:수, 3:목, 4:금, 5:토, 6:일)
         weekday_idx = chk_date.weekday()
         days_kor = ["월", "화", "수", "목", "금", "토", "일"]
         day_str = days_kor[weekday_idx]
         
         c1.info(f"선택일: {chk_date.strftime('%Y-%m-%d')} ({day_str})")
 
-        # 요일에 따른 모임 리스트 가져오기 (없으면 빈 리스트)
         target_meetings = MEETING_CONFIG.get(weekday_idx, [])
 
         all_grps = sorted(df_members["소그룹"].unique())
@@ -295,7 +293,6 @@ def main():
             else: targets = pd.DataFrame()
 
             if not targets.empty:
-                # 선택된 '그 날짜'의 데이터만 가져오기
                 current_log = df_att[df_att["날짜"] == str(chk_date)]
                 
                 grid_data = []
@@ -320,23 +317,20 @@ def main():
                 edited_df = st.data_editor(df_grid, column_config=column_config, hide_index=True, use_container_width=True)
 
                 if st.button("✅ 출석 저장하기", use_container_width=True):
-                    # 1. '그 날짜' + '그 소그룹' + '보이는 모임' 데이터만 삭제 (덮어쓰기)
                     mask_date = df_att["날짜"] == str(chk_date)
                     mask_grp = df_att["소그룹"] == grp if grp != "전체 보기" else True
                     mask_meeting = df_att["모임명"].isin(target_meetings)
                     
                     df_clean = df_att[~(mask_date & mask_grp & mask_meeting)]
                     
-                    # 2. 체크된 내용 그대로 저장 (날짜 계산 X, 선택한 날짜 그대로)
                     new_records = []
                     for _, row in edited_df.iterrows():
                         name = row["이름"]
                         u_grp = row["소그룹"]
-                        
                         for col in target_meetings:
                             if row[col]:
                                 new_records.append({
-                                    "날짜": str(chk_date), # 선택한 날짜 그대로 저장
+                                    "날짜": str(chk_date), 
                                     "모임명": col, 
                                     "이름": name, 
                                     "소그룹": u_grp, 
@@ -347,7 +341,7 @@ def main():
                     save_data("attendance_log", final_df)
                     st.success(f"✅ {chk_date} ({day_str}) 출석 저장 완료!"); st.rerun()
 
-    # --- 3. 통계 ---
+    # --- 3. [수정] 통계 (개인별 상세 수정 추가) ---
     elif sel_menu == "📊 통계":
         st.subheader("📊 출석 누적 현황 및 상세 조회")
         if df_att.empty: st.info("데이터가 없습니다.")
@@ -379,27 +373,58 @@ def main():
                     st.divider()
                     st.markdown(f"##### 📈 {s_grp} 출석 누적 현황표")
                     pivot_table = pd.crosstab(w_df["이름"], w_df["모임명"])
-                    
-                    # 모든 모임 컬럼 보장
                     for m_type in ALL_MEETINGS:
                         if m_type not in pivot_table.columns: pivot_table[m_type] = 0
-                    
-                    # 순서 정렬
                     pivot_table = pivot_table[[c for c in ALL_MEETINGS if c in pivot_table.columns]]
                     st.dataframe(pivot_table, use_container_width=True)
                     
                     st.divider()
-                    st.markdown("##### 🔍 개인별 상세 출석 내역 조회")
+                    st.markdown("##### 🔍 개인별 상세 출석 수정 (관리자/리더)")
                     if not pivot_table.empty:
                         name_list = sorted(pivot_table.index.tolist())
-                        selected_name = st.selectbox("이름을 선택하세요", name_list)
+                        selected_name = st.selectbox("수정할 이름 선택", name_list)
+                        
                         if selected_name:
+                            # [핵심] 수정 가능한 데이터 에디터로 변경
                             person_log = w_df[w_df["이름"] == selected_name].sort_values(by="날짜", ascending=False)
                             person_log["날짜"] = person_log["날짜"].dt.strftime("%Y-%m-%d")
-                            if not person_log.empty:
-                                st.write(f"**📌 {selected_name}님의 출석 기록 ({len(person_log)}건)**")
-                                st.dataframe(person_log[["날짜", "모임명", "소그룹"]], use_container_width=True, hide_index=True)
-                            else: st.info("상세 기록이 없습니다.")
+                            
+                            st.info(f"💡 {selected_name}님의 기록을 직접 수정하거나 추가할 수 있습니다. (체크해제 시 삭제됨)")
+                            
+                            # 수정용 데이터프레임 (필요한 컬럼만)
+                            edit_target = person_log[["날짜", "모임명", "소그룹"]]
+                            
+                            # data_editor로 표시 (행 추가/삭제 가능)
+                            edited_log = st.data_editor(
+                                edit_target, 
+                                num_rows="dynamic", 
+                                use_container_width=True,
+                                key="stat_editor"
+                            )
+                            
+                            if st.button("💾 수정사항 저장하기", use_container_width=True):
+                                # 1. 해당 사람의 기존 기록 전체 삭제 (조회 기간 내)
+                                # (단, 여기서는 전체 기간 데이터를 건드릴 수 있으므로, 원본 df_att에서 해당 이름 데이터만 교체하는 방식이 안전)
+                                
+                                # 원본에서 '이 사람'의 데이터만 뺀 나머지 보존
+                                df_rest = df_att[df_att["이름"] != selected_name]
+                                
+                                # 2. 에디터에서 수정된 내용으로 새 데이터 생성
+                                new_person_data = []
+                                for _, row in edited_log.iterrows():
+                                    if row["날짜"] and row["모임명"]: # 빈칸 방지
+                                        new_person_data.append({
+                                            "날짜": str(row["날짜"]),
+                                            "모임명": row["모임명"],
+                                            "이름": selected_name,
+                                            "소그룹": row["소그룹"], # 소그룹 정보 유지
+                                            "출석여부": "출석"
+                                        })
+                                
+                                # 3. 합치기
+                                final_df = pd.concat([df_rest, pd.DataFrame(new_person_data)], ignore_index=True)
+                                save_data("attendance_log", final_df)
+                                st.success(f"✅ {selected_name}님의 출석 기록이 업데이트되었습니다!"); st.rerun()
 
     # --- 4. 기도제목 ---
     elif sel_menu == "🙏 기도제목":
