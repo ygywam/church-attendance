@@ -6,6 +6,7 @@ import time
 import gspread
 import extra_streamlit_components as stx
 from oauth2client.service_account import ServiceAccountCredentials
+import re # [추가] 정규표현식 모듈 (날짜 숫자만 추출하기 위해)
 
 # --- [설정] 구글 시트 파일 이름 ---
 SHEET_NAME = "교회출석데이터"
@@ -139,16 +140,14 @@ def get_day_name(date_obj):
 def get_target_columns(weekday_idx, group_name):
     if weekday_idx != 6:
         return MEETING_CONFIG.get(weekday_idx, [])
-    
     if group_name == "전체 보기": return SUNDAY_ALL
-    
     g_name = str(group_name)
     if "중고등" in g_name: return COLS_YOUTH
     elif "청년" in g_name: return COLS_YOUNG
     elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name: return COLS_KIDS
     else: return COLS_ADULT
 
-# [추가] 사용설명서 렌더링 함수
+# [추가] 사용설명서
 def draw_manual_tab():
     st.markdown("""
     ### 📘 회정교회 출석체크 시스템 가이드
@@ -199,6 +198,7 @@ def draw_notice_section(is_admin, current_user_name):
                     save_data("notices", pd.concat([df_notices, new_n], ignore_index=True))
                     st.success("등록됨"); st.rerun()
 
+# [수정] 한글 날짜 인식 로직 추가
 def draw_birthday_calendar(df_members):
     today = datetime.date.today()
     month = today.month
@@ -207,13 +207,18 @@ def draw_birthday_calendar(df_members):
     if not df_members.empty:
         for _, row in df_members.iterrows():
             try:
-                raw = str(row["생일"]).replace(".", "-").replace("/", "-")
-                parts = raw.split("-")
+                raw_birth = str(row["생일"])
+                # 숫자만 모두 추출 (예: 1983년 4월 30일 -> ['1983', '4', '30'])
+                parts = re.findall(r'\d+', raw_birth)
+                
                 if len(parts) >= 2:
-                    m, d = int(parts[-2]), int(parts[-1])
-                    if m == month:
-                        if str(d) not in birthdays: birthdays[str(d)] = []
-                        birthdays[str(d)].append(f"{row['이름']}")
+                    # 마지막이 일(day), 그 앞이 월(month)이라고 가정
+                    b_month = int(parts[-2])
+                    b_day = int(parts[-1])
+                    
+                    if b_month == month:
+                        if str(b_day) not in birthdays: birthdays[str(b_day)] = []
+                        birthdays[str(b_day)].append(f"{row['이름']}")
             except: continue
 
     st.markdown(f"### 📅 {month}월 생일 달력")
@@ -307,7 +312,6 @@ def main():
     df_prayer = load_data("prayer_log")
     df_reports = load_data("reports")
 
-    # [수정] 메뉴에 사용설명서 추가
     menu = ["🏠 홈", "📖 사용설명서", "📋 출석체크", "📊 통계", "🙏 기도제목", "📨 사역 보고", "👥 명단 관리"]
     if is_admin: menu.append("🔐 계정 관리")
     
@@ -320,21 +324,19 @@ def main():
         st.subheader("이번 달 주요 일정")
         draw_birthday_calendar(df_members)
 
-    # --- 2. [추가] 사용설명서 ---
+    # --- 2. 사용설명서 ---
     elif sel_menu == "📖 사용설명서":
         draw_manual_tab()
 
-    # --- 3. 출석체크 (부서별 맞춤 + 이름만 고정) ---
+    # --- 3. 출석체크 ---
     elif sel_menu == "📋 출석체크":
         st.subheader("📋 요일별 맞춤 출석체크")
         
         c1, c2 = st.columns(2)
         chk_date = c1.date_input("날짜 선택", datetime.date.today())
-        
         weekday_idx = chk_date.weekday()
         days_kor = ["월", "화", "수", "목", "금", "토", "일"]
         day_str = days_kor[weekday_idx]
-        
         c1.info(f"선택일: {chk_date.strftime('%Y-%m-%d')} ({day_str})")
 
         all_grps = sorted(df_members["소그룹"].unique())
@@ -356,28 +358,26 @@ def main():
 
             if not targets.empty:
                 current_log = df_att[df_att["날짜"] == str(chk_date)]
-                
                 grid_data = []
                 for _, member in targets.iterrows():
                     row = {"이름": member["이름"], "소그룹": member["소그룹"]}
                     member_log = current_log[current_log["이름"] == member["이름"]]
                     for col in target_meetings:
-                        is_attended = not member_log[member_log["모임명"] == col].empty
-                        row[col] = is_attended
+                        row[col] = not member_log[member_log["모임명"] == col].empty
                     grid_data.append(row)
                 
                 df_grid = pd.DataFrame(grid_data)
-
-                # 이름 열 고정
-                column_config = {
+                
+                # 틀 고정 (이름만)
+                col_conf = {
                     "이름": st.column_config.TextColumn("이름", disabled=True, pinned=True),
                     "소그룹": st.column_config.TextColumn("소그룹", disabled=True)
                 }
                 for col in target_meetings:
-                    column_config[col] = st.column_config.CheckboxColumn(col, default=False)
+                    col_conf[col] = st.column_config.CheckboxColumn(col, default=False)
 
                 st.success(f"📌 {grp} / {', '.join(target_meetings)} 출석을 체크합니다.")
-                edited_df = st.data_editor(df_grid, column_config=column_config, hide_index=True, use_container_width=True)
+                edited_df = st.data_editor(df_grid, column_config=col_conf, hide_index=True, use_container_width=True)
 
                 if st.button("✅ 출석 저장하기", use_container_width=True):
                     mask_date = df_att["날짜"] == str(chk_date)
@@ -393,13 +393,8 @@ def main():
                         for col in target_meetings:
                             if row[col]:
                                 new_records.append({
-                                    "날짜": str(chk_date), 
-                                    "모임명": col, 
-                                    "이름": name, 
-                                    "소그룹": u_grp, 
-                                    "출석여부": "출석"
+                                    "날짜": str(chk_date), "모임명": col, "이름": name, "소그룹": u_grp, "출석여부": "출석"
                                 })
-                    
                     final_df = pd.concat([df_clean, pd.DataFrame(new_records)], ignore_index=True)
                     save_data("attendance_log", final_df)
                     st.success(f"✅ {chk_date} ({day_str}) 출석 저장 완료!"); st.rerun()
@@ -415,7 +410,7 @@ def main():
             c1, c2 = st.columns([2, 1])
             today = datetime.date.today()
             start_of_year = datetime.date(today.year, 1, 1)
-            date_range = c1.date_input("📅 조회 기간 선택", (start_of_year, today), format="YYYY/MM/DD")
+            date_range = c1.date_input("📅 조회 기간", (start_of_year, today), format="YYYY/MM/DD")
             
             if len(date_range) == 2:
                 start_d, end_d = date_range
@@ -442,15 +437,15 @@ def main():
                     st.dataframe(pivot_table, use_container_width=True)
                     
                     st.divider()
-                    st.markdown("##### 🔍 개인별 상세 출석 수정 (관리자/리더)")
+                    st.markdown("##### 🔍 개인별 상세 출석 수정")
                     if not pivot_table.empty:
                         name_list = sorted(pivot_table.index.tolist())
                         selected_name = st.selectbox("수정할 이름 선택", name_list)
-                        
                         if selected_name:
                             person_log = w_df[w_df["이름"] == selected_name].sort_values(by="날짜", ascending=False)
                             person_log["날짜"] = person_log["날짜"].apply(lambda x: f"{x.strftime('%Y-%m-%d')} {get_day_name(x)}")
-                            st.info(f"💡 {selected_name}님의 기록을 수정하거나 추가할 수 있습니다.")
+                            
+                            st.info(f"💡 {selected_name}님의 기록을 수정/추가할 수 있습니다.")
                             edit_target = person_log[["날짜", "모임명", "소그룹"]]
                             edited_log = st.data_editor(edit_target, num_rows="dynamic", use_container_width=True, key="stat_editor")
                             
