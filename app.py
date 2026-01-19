@@ -10,11 +10,16 @@ from oauth2client.service_account import ServiceAccountCredentials
 # --- [설정] 구글 시트 파일 이름 ---
 SHEET_NAME = "교회출석데이터"
 
-# --- [설정] 모임 리스트 및 요일 매핑 ---
-# 주일 모임 리스트
-SUNDAY_MEETINGS = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임"]
-# 전체 모임 리스트 (순서대로 표시됨)
-ALL_MEETINGS = SUNDAY_MEETINGS + ["수요예배", "금요철야"]
+# --- [설정] 요일별 모임 리스트 정의 ---
+MEETING_CONFIG = {
+    6: ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임"], # 6 = 일요일
+    2: ["수요예배"], # 2 = 수요일
+    4: ["금요철야"]  # 4 = 금요일
+}
+# 전체 모임 리스트 (통계용)
+ALL_MEETINGS = []
+for m_list in MEETING_CONFIG.values():
+    ALL_MEETINGS.extend(m_list)
 
 # 페이지 기본 설정
 st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_state="collapsed")
@@ -22,29 +27,17 @@ st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_sta
 # --- [스타일] CSS 적용 ---
 st.markdown("""
     <style>
-    /* 기본 폰트 설정 */
     html, body, p, li, .stMarkdown { font-size: 18px !important; }
-    
-    /* 제목 스타일 */
     h1 { 
-        font-size: 46px !important; 
-        text-align: center; 
-        word-break: keep-all; 
-        margin-bottom: 30px !important;
-        font-weight: 800 !important;
+        font-size: 46px !important; text-align: center; word-break: keep-all; 
+        margin-bottom: 30px !important; font-weight: 800 !important;
     }
-    
-    /* 버튼 스타일 */
     .stButton button { font-size: 20px !important; font-weight: bold; width: 100%; }
-    
-    /* 공지사항 박스 */
     .notice-box {
         background-color: #fff3cd; border: 2px solid #ffeeba; color: #856404;
         padding: 15px; border-radius: 10px; margin-bottom: 20px;
         text-align: center; font-size: 20px; font-weight: bold; line-height: 1.5; word-break: keep-all;
     }
-
-    /* 달력 CSS */
     .calendar-container { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; width: 100%; }
     .cal-header { text-align: center; font-weight: bold; padding: 5px 0; font-size: 16px; }
     .cal-cell {
@@ -57,8 +50,6 @@ st.markdown("""
         font-size: 12px; border-radius: 4px; padding: 2px; margin-top: 4px;
         word-break: keep-all; line-height: 1.2; font-weight: bold;
     }
-
-    /* 모바일 반응형 */
     @media only screen and (max-width: 600px) {
         h1 { font-size: 28px !important; margin-bottom: 15px !important; }
         .cal-header { font-size: 14px; }
@@ -128,22 +119,10 @@ def save_data(sheet_name, df):
 
 # --- 3. 헬퍼 함수 ---
 def get_week_range(date_obj):
-    # 선택된 날짜가 속한 주의 일요일~토요일 계산
-    # Python weekday: Mon=0, ... Sun=6
-    # 우리의 기준: 일요일 시작
-    idx = (date_obj.weekday() + 1) % 7 # 일=0, 월=1, ... 토=6
+    idx = (date_obj.weekday() + 1) % 7 
     start_sunday = date_obj - datetime.timedelta(days=idx)
     end_saturday = start_sunday + datetime.timedelta(days=6)
     return start_sunday, end_saturday
-
-def get_meeting_date(base_sunday, meeting_name):
-    # 기준 일요일을 받아서 각 모임별 실제 날짜를 반환
-    if meeting_name == "수요예배":
-        return base_sunday + datetime.timedelta(days=3) # 수요일
-    elif meeting_name == "금요철야":
-        return base_sunday + datetime.timedelta(days=5) # 금요일
-    else:
-        return base_sunday # 주일 모임들
 
 def draw_notice_section(is_admin, current_user_name):
     df_notices = load_data("notices")
@@ -283,16 +262,22 @@ def main():
         st.subheader("이번 달 주요 일정")
         draw_birthday_calendar(df_members)
 
-    # --- 2. 출석체크 (요일별 자동 매핑) ---
+    # --- 2. [완전 개편] 출석체크 (요일 자동인식) ---
     elif sel_menu == "📋 출석체크":
-        st.subheader("📋 주간 모임 통합 출석체크")
+        st.subheader("📋 요일별 맞춤 출석체크")
         
         c1, c2 = st.columns(2)
-        selected_date = c1.date_input("날짜 선택 (해당 주간 자동 인식)", datetime.date.today())
+        chk_date = c1.date_input("날짜 선택 (해당 요일 모임이 자동 표시됨)", datetime.date.today())
         
-        # [핵심] 선택된 날짜가 속한 주의 일요일(기준일) 계산
-        sun, sat = get_week_range(selected_date)
-        c1.info(f"📅 출석 인정 기간: {sun.strftime('%m/%d(일)')} ~ {sat.strftime('%m/%d(토)')}")
+        # [핵심] 요일 계산 (0:월, 1:화, 2:수, 3:목, 4:금, 5:토, 6:일)
+        weekday_idx = chk_date.weekday()
+        days_kor = ["월", "화", "수", "목", "금", "토", "일"]
+        day_str = days_kor[weekday_idx]
+        
+        c1.info(f"선택일: {chk_date.strftime('%Y-%m-%d')} ({day_str})")
+
+        # 요일에 따른 모임 리스트 가져오기 (없으면 빈 리스트)
+        target_meetings = MEETING_CONFIG.get(weekday_idx, [])
 
         all_grps = sorted(df_members["소그룹"].unique())
         if is_admin: grp = c2.selectbox("소그룹(관리자)", ["전체 보기"] + all_grps)
@@ -302,88 +287,70 @@ def main():
             elif len(my_grps) == 1: grp = my_grps[0]; c2.info(f"담당: {grp}")
             else: grp = None
 
-        if grp:
-            targets = df_members if grp == "전체 보기" else df_members[df_members["소그룹"] == grp]
-        else: targets = pd.DataFrame()
+        if not target_meetings:
+            st.warning(f"📌 {day_str}요일에는 예정된 정기 모임이 없습니다.")
+        else:
+            if grp:
+                targets = df_members if grp == "전체 보기" else df_members[df_members["소그룹"] == grp]
+            else: targets = pd.DataFrame()
 
-        if not targets.empty:
-            # 해당 주간(일~토)의 전체 출석 기록 가져오기
-            # 날짜 비교를 위해 datetime 변환 필요하지만, 일단 문자열 매칭으로 간단히 처리 (포맷 유지 가정)
-            # 정확성을 위해 전체 데이터를 가져와서 날짜 필터링 수행
-            df_att_copy = df_att.copy()
-            df_att_copy["날짜_dt"] = pd.to_datetime(df_att_copy["날짜"], errors='coerce')
-            
-            # 이번 주간에 해당하는 데이터만 필터링
-            week_mask = (df_att_copy["날짜_dt"] >= pd.Timestamp(sun)) & (df_att_copy["날짜_dt"] <= pd.Timestamp(sat))
-            week_log = df_att_copy[week_mask]
-            
-            # 그리드 데이터 생성
-            grid_data = []
-            for _, member in targets.iterrows():
-                row = {"이름": member["이름"], "소그룹": member["소그룹"]}
-                member_log = week_log[week_log["이름"] == member["이름"]]
+            if not targets.empty:
+                # 선택된 '그 날짜'의 데이터만 가져오기
+                current_log = df_att[df_att["날짜"] == str(chk_date)]
                 
-                for col in ALL_MEETINGS:
-                    # 해당 모임에 출석 기록이 있는지 확인
-                    # (날짜는 이미 주간 필터링 되었으므로, 모임명만 일치하면 출석으로 인정)
-                    is_attended = not member_log[member_log["모임명"] == col].empty
-                    row[col] = is_attended
-                grid_data.append(row)
-            
-            df_grid = pd.DataFrame(grid_data)
+                grid_data = []
+                for _, member in targets.iterrows():
+                    row = {"이름": member["이름"], "소그룹": member["소그룹"]}
+                    member_log = current_log[current_log["이름"] == member["이름"]]
+                    for col in target_meetings:
+                        is_attended = not member_log[member_log["모임명"] == col].empty
+                        row[col] = is_attended
+                    grid_data.append(row)
+                
+                df_grid = pd.DataFrame(grid_data)
 
-            column_config = {
-                "이름": st.column_config.TextColumn("이름", disabled=True),
-                "소그룹": st.column_config.TextColumn("소그룹", disabled=True)
-            }
-            for col in ALL_MEETINGS:
-                column_config[col] = st.column_config.CheckboxColumn(col, default=False)
+                column_config = {
+                    "이름": st.column_config.TextColumn("이름", disabled=True),
+                    "소그룹": st.column_config.TextColumn("소그룹", disabled=True)
+                }
+                for col in target_meetings:
+                    column_config[col] = st.column_config.CheckboxColumn(col, default=False)
 
-            st.info("💡 선택한 날짜가 포함된 '한 주간'의 출석을 체크합니다.")
-            edited_df = st.data_editor(df_grid, column_config=column_config, hide_index=True, use_container_width=True)
+                st.success(f"📌 오늘은 **{', '.join(target_meetings)}** 출석을 체크합니다.")
+                edited_df = st.data_editor(df_grid, column_config=column_config, hide_index=True, use_container_width=True)
 
-            if st.button("✅ 주간 출석 저장하기", use_container_width=True):
-                # 1. 기존 데이터 삭제 (해당 주간 + 해당 소그룹 + 관리 대상 모임)
-                #    저장 버튼을 누르면 화면에 보이는 상태 그대로 덮어쓰기 위함
-                mask_grp = df_att["소그룹"] == grp if grp != "전체 보기" else True
-                mask_meeting = df_att["모임명"].isin(ALL_MEETINGS)
-                
-                # 날짜 필터링을 위해 원본 데이터도 datetime 변환 필요
-                df_att["날짜_dt"] = pd.to_datetime(df_att["날짜"], errors='coerce')
-                mask_week = (df_att["날짜_dt"] >= pd.Timestamp(sun)) & (df_att["날짜_dt"] <= pd.Timestamp(sat))
-                
-                # 삭제 대상 제외하고 남기기
-                df_clean = df_att[~(mask_week & mask_grp & mask_meeting)].drop(columns=["날짜_dt"])
-                
-                # 2. 새 데이터 추가
-                new_records = []
-                for _, row in edited_df.iterrows():
-                    name = row["이름"]
-                    u_grp = row["소그룹"]
+                if st.button("✅ 출석 저장하기", use_container_width=True):
+                    # 1. '그 날짜' + '그 소그룹' + '보이는 모임' 데이터만 삭제 (덮어쓰기)
+                    mask_date = df_att["날짜"] == str(chk_date)
+                    mask_grp = df_att["소그룹"] == grp if grp != "전체 보기" else True
+                    mask_meeting = df_att["모임명"].isin(target_meetings)
                     
-                    for col in ALL_MEETINGS:
-                        if row[col]: # 체크된 경우
-                            # [핵심] 모임별 올바른 날짜 계산
-                            target_date = get_meeting_date(sun, col)
-                            
-                            new_records.append({
-                                "날짜": str(target_date), # YYYY-MM-DD
-                                "모임명": col,
-                                "이름": name,
-                                "소그룹": u_grp,
-                                "출석여부": "출석"
-                            })
-                
-                final_df = pd.concat([df_clean, pd.DataFrame(new_records)], ignore_index=True)
-                save_data("attendance_log", final_df)
-                st.success(f"✅ {sun.strftime('%m/%d')}주차 출석이 저장되었습니다!"); st.rerun()
+                    df_clean = df_att[~(mask_date & mask_grp & mask_meeting)]
+                    
+                    # 2. 체크된 내용 그대로 저장 (날짜 계산 X, 선택한 날짜 그대로)
+                    new_records = []
+                    for _, row in edited_df.iterrows():
+                        name = row["이름"]
+                        u_grp = row["소그룹"]
+                        
+                        for col in target_meetings:
+                            if row[col]:
+                                new_records.append({
+                                    "날짜": str(chk_date), # 선택한 날짜 그대로 저장
+                                    "모임명": col, 
+                                    "이름": name, 
+                                    "소그룹": u_grp, 
+                                    "출석여부": "출석"
+                                })
+                    
+                    final_df = pd.concat([df_clean, pd.DataFrame(new_records)], ignore_index=True)
+                    save_data("attendance_log", final_df)
+                    st.success(f"✅ {chk_date} ({day_str}) 출석 저장 완료!"); st.rerun()
 
     # --- 3. 통계 ---
     elif sel_menu == "📊 통계":
         st.subheader("📊 출석 누적 현황 및 상세 조회")
-        
-        if df_att.empty:
-            st.info("데이터가 없습니다.")
+        if df_att.empty: st.info("데이터가 없습니다.")
         else:
             df_stat = df_att.copy()
             df_stat["날짜"] = pd.to_datetime(df_stat["날짜"], errors='coerce')
@@ -391,12 +358,10 @@ def main():
             c1, c2 = st.columns([2, 1])
             today = datetime.date.today()
             start_of_year = datetime.date(today.year, 1, 1)
-            
             date_range = c1.date_input("📅 조회 기간 선택", (start_of_year, today), format="YYYY/MM/DD")
             
             if len(date_range) == 2:
                 start_d, end_d = date_range
-                
                 if is_admin:
                     all_g = sorted(df_att["소그룹"].unique())
                     s_grp = c2.selectbox("그룹 선택", ["전체 보기"] + all_g)
@@ -407,18 +372,19 @@ def main():
 
                 mask = (df_stat["날짜"] >= pd.Timestamp(start_d)) & (df_stat["날짜"] <= pd.Timestamp(end_d))
                 w_df = df_stat[mask]
-                
                 if s_grp != "전체 보기": w_df = w_df[w_df["소그룹"] == s_grp]
 
                 if w_df.empty: st.warning("해당 기간에 출석 기록이 없습니다.")
                 else:
                     st.divider()
                     st.markdown(f"##### 📈 {s_grp} 출석 누적 현황표")
-                    
                     pivot_table = pd.crosstab(w_df["이름"], w_df["모임명"])
+                    
+                    # 모든 모임 컬럼 보장
                     for m_type in ALL_MEETINGS:
                         if m_type not in pivot_table.columns: pivot_table[m_type] = 0
                     
+                    # 순서 정렬
                     pivot_table = pivot_table[[c for c in ALL_MEETINGS if c in pivot_table.columns]]
                     st.dataframe(pivot_table, use_container_width=True)
                     
@@ -427,7 +393,6 @@ def main():
                     if not pivot_table.empty:
                         name_list = sorted(pivot_table.index.tolist())
                         selected_name = st.selectbox("이름을 선택하세요", name_list)
-                        
                         if selected_name:
                             person_log = w_df[w_df["이름"] == selected_name].sort_values(by="날짜", ascending=False)
                             person_log["날짜"] = person_log["날짜"].dt.strftime("%Y-%m-%d")
@@ -439,7 +404,6 @@ def main():
     # --- 4. 기도제목 ---
     elif sel_menu == "🙏 기도제목":
         st.subheader("기도제목 관리")
-        
         if is_admin:
             st.markdown("### 🗓️ 주간 전체 기도제목 모아보기")
             c1, c2 = st.columns([1, 2])
@@ -454,14 +418,12 @@ def main():
             
             if weekly_prayers.empty: st.info("해당 주간에 등록된 기도제목이 없습니다.")
             else: st.dataframe(weekly_prayers[["날짜", "소그룹", "이름", "내용"]], use_container_width=True, hide_index=True)
-
         else:
             all_g = sorted(df_members["소그룹"].unique())
             my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
             if len(my_gs)>1: p_grp = st.selectbox("그룹", my_gs)
             elif len(my_gs)==1: p_grp = my_gs[0]
             else: p_grp = None
-            
             if p_grp:
                 mems = df_members[df_members["소그룹"]==p_grp]["이름"].tolist()
                 p_who = st.selectbox("이름", mems)
@@ -482,19 +444,18 @@ def main():
     # --- 5. 사역 보고 ---
     elif sel_menu == "📨 사역 보고":
         st.subheader("📨 소그룹 사역 보고")
-
         if is_admin:
             st.markdown("### 📥 주간 사역 보고 리스트")
             c1, c2 = st.columns([1, 2])
             r_date_adm = c1.date_input("조회 기준 날짜", datetime.date.today(), key="r_date_adm")
             sun, sat = get_week_range(r_date_adm)
             c2.caption(f"📅 조회 기간: {sun.strftime('%Y-%m-%d')} ~ {sat.strftime('%Y-%m-%d')}")
-
+            
             df_rep_stat = df_reports.copy()
             df_rep_stat["날짜"] = pd.to_datetime(df_rep_stat["날짜"], errors='coerce')
             mask = (df_rep_stat["날짜"] >= pd.Timestamp(sun)) & (df_rep_stat["날짜"] <= pd.Timestamp(sat))
             weekly_reports = df_reports[mask].sort_values(by="날짜", ascending=False)
-
+            
             if weekly_reports.empty: st.info("해당 주간에 제출된 보고서가 없습니다.")
             else:
                 for i, row in weekly_reports.iterrows():
