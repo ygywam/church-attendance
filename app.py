@@ -10,12 +10,11 @@ from oauth2client.service_account import ServiceAccountCredentials
 # --- [설정] 구글 시트 파일 이름 ---
 SHEET_NAME = "교회출석데이터"
 
-# --- [설정] 관리할 모임 리스트 (새벽기도 제외, 부서 추가됨) ---
-MEETING_TYPES = [
-    "주일 1부", "주일 2부", "주일 오후", 
-    "주일학교", "중고등부", "청년부", 
-    "소그룹 모임", "수요예배", "금요철야"
-]
+# --- [설정] 모임 리스트 및 요일 매핑 ---
+# 주일 모임 리스트
+SUNDAY_MEETINGS = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임"]
+# 전체 모임 리스트 (순서대로 표시됨)
+ALL_MEETINGS = SUNDAY_MEETINGS + ["수요예배", "금요철야"]
 
 # 페이지 기본 설정
 st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_state="collapsed")
@@ -129,10 +128,22 @@ def save_data(sheet_name, df):
 
 # --- 3. 헬퍼 함수 ---
 def get_week_range(date_obj):
-    idx = (date_obj.weekday() + 1) % 7
+    # 선택된 날짜가 속한 주의 일요일~토요일 계산
+    # Python weekday: Mon=0, ... Sun=6
+    # 우리의 기준: 일요일 시작
+    idx = (date_obj.weekday() + 1) % 7 # 일=0, 월=1, ... 토=6
     start_sunday = date_obj - datetime.timedelta(days=idx)
     end_saturday = start_sunday + datetime.timedelta(days=6)
     return start_sunday, end_saturday
+
+def get_meeting_date(base_sunday, meeting_name):
+    # 기준 일요일을 받아서 각 모임별 실제 날짜를 반환
+    if meeting_name == "수요예배":
+        return base_sunday + datetime.timedelta(days=3) # 수요일
+    elif meeting_name == "금요철야":
+        return base_sunday + datetime.timedelta(days=5) # 금요일
+    else:
+        return base_sunday # 주일 모임들
 
 def draw_notice_section(is_admin, current_user_name):
     df_notices = load_data("notices")
@@ -272,14 +283,16 @@ def main():
         st.subheader("이번 달 주요 일정")
         draw_birthday_calendar(df_members)
 
-    # --- 2. 출석체크 (그리드 + 모임 업데이트) ---
+    # --- 2. 출석체크 (요일별 자동 매핑) ---
     elif sel_menu == "📋 출석체크":
         st.subheader("📋 주간 모임 통합 출석체크")
         
         c1, c2 = st.columns(2)
-        chk_date = c1.date_input("날짜", datetime.date.today())
-        days = ["(월)", "(화)", "(수)", "(목)", "(금)", "(토)", "(일)"]
-        c1.caption(f"선택일: {chk_date.strftime('%Y-%m-%d')} {days[chk_date.weekday()]}")
+        selected_date = c1.date_input("날짜 선택 (해당 주간 자동 인식)", datetime.date.today())
+        
+        # [핵심] 선택된 날짜가 속한 주의 일요일(기준일) 계산
+        sun, sat = get_week_range(selected_date)
+        c1.info(f"📅 출석 인정 기간: {sun.strftime('%m/%d(일)')} ~ {sat.strftime('%m/%d(토)')}")
 
         all_grps = sorted(df_members["소그룹"].unique())
         if is_admin: grp = c2.selectbox("소그룹(관리자)", ["전체 보기"] + all_grps)
@@ -289,23 +302,30 @@ def main():
             elif len(my_grps) == 1: grp = my_grps[0]; c2.info(f"담당: {grp}")
             else: grp = None
 
-        # 체크할 모임 리스트 (새벽기도 제외, 부서 추가됨)
-        check_cols = MEETING_TYPES
-
         if grp:
             targets = df_members if grp == "전체 보기" else df_members[df_members["소그룹"] == grp]
         else: targets = pd.DataFrame()
 
         if not targets.empty:
-            # 현재 날짜의 출석 기록 가져오기
-            current_log = df_att[df_att["날짜"] == str(chk_date)]
+            # 해당 주간(일~토)의 전체 출석 기록 가져오기
+            # 날짜 비교를 위해 datetime 변환 필요하지만, 일단 문자열 매칭으로 간단히 처리 (포맷 유지 가정)
+            # 정확성을 위해 전체 데이터를 가져와서 날짜 필터링 수행
+            df_att_copy = df_att.copy()
+            df_att_copy["날짜_dt"] = pd.to_datetime(df_att_copy["날짜"], errors='coerce')
+            
+            # 이번 주간에 해당하는 데이터만 필터링
+            week_mask = (df_att_copy["날짜_dt"] >= pd.Timestamp(sun)) & (df_att_copy["날짜_dt"] <= pd.Timestamp(sat))
+            week_log = df_att_copy[week_mask]
             
             # 그리드 데이터 생성
             grid_data = []
             for _, member in targets.iterrows():
                 row = {"이름": member["이름"], "소그룹": member["소그룹"]}
-                member_log = current_log[current_log["이름"] == member["이름"]]
-                for col in check_cols:
+                member_log = week_log[week_log["이름"] == member["이름"]]
+                
+                for col in ALL_MEETINGS:
+                    # 해당 모임에 출석 기록이 있는지 확인
+                    # (날짜는 이미 주간 필터링 되었으므로, 모임명만 일치하면 출석으로 인정)
                     is_attended = not member_log[member_log["모임명"] == col].empty
                     row[col] = is_attended
                 grid_data.append(row)
@@ -316,36 +336,49 @@ def main():
                 "이름": st.column_config.TextColumn("이름", disabled=True),
                 "소그룹": st.column_config.TextColumn("소그룹", disabled=True)
             }
-            for col in check_cols:
+            for col in ALL_MEETINGS:
                 column_config[col] = st.column_config.CheckboxColumn(col, default=False)
 
-            st.info("💡 모임별로 출석한 사람을 체크하고 하단의 '저장' 버튼을 누르세요.")
+            st.info("💡 선택한 날짜가 포함된 '한 주간'의 출석을 체크합니다.")
             edited_df = st.data_editor(df_grid, column_config=column_config, hide_index=True, use_container_width=True)
 
-            if st.button("✅ 출석 저장하기", use_container_width=True):
-                # 1. 기존 데이터 삭제 (덮어쓰기 로직)
-                mask_date = df_att["날짜"] == str(chk_date)
+            if st.button("✅ 주간 출석 저장하기", use_container_width=True):
+                # 1. 기존 데이터 삭제 (해당 주간 + 해당 소그룹 + 관리 대상 모임)
+                #    저장 버튼을 누르면 화면에 보이는 상태 그대로 덮어쓰기 위함
                 mask_grp = df_att["소그룹"] == grp if grp != "전체 보기" else True
-                mask_meeting = df_att["모임명"].isin(check_cols)
+                mask_meeting = df_att["모임명"].isin(ALL_MEETINGS)
                 
-                df_clean = df_att[~(mask_date & mask_grp & mask_meeting)]
+                # 날짜 필터링을 위해 원본 데이터도 datetime 변환 필요
+                df_att["날짜_dt"] = pd.to_datetime(df_att["날짜"], errors='coerce')
+                mask_week = (df_att["날짜_dt"] >= pd.Timestamp(sun)) & (df_att["날짜_dt"] <= pd.Timestamp(sat))
+                
+                # 삭제 대상 제외하고 남기기
+                df_clean = df_att[~(mask_week & mask_grp & mask_meeting)].drop(columns=["날짜_dt"])
                 
                 # 2. 새 데이터 추가
                 new_records = []
                 for _, row in edited_df.iterrows():
                     name = row["이름"]
                     u_grp = row["소그룹"]
-                    for col in check_cols:
-                        if row[col]:
+                    
+                    for col in ALL_MEETINGS:
+                        if row[col]: # 체크된 경우
+                            # [핵심] 모임별 올바른 날짜 계산
+                            target_date = get_meeting_date(sun, col)
+                            
                             new_records.append({
-                                "날짜": str(chk_date), "모임명": col, "이름": name, "소그룹": u_grp, "출석여부": "출석"
+                                "날짜": str(target_date), # YYYY-MM-DD
+                                "모임명": col,
+                                "이름": name,
+                                "소그룹": u_grp,
+                                "출석여부": "출석"
                             })
                 
                 final_df = pd.concat([df_clean, pd.DataFrame(new_records)], ignore_index=True)
                 save_data("attendance_log", final_df)
-                st.success("저장이 완료되었습니다! 🎉"); st.rerun()
+                st.success(f"✅ {sun.strftime('%m/%d')}주차 출석이 저장되었습니다!"); st.rerun()
 
-    # --- 3. [수정] 통계 (누적 매트릭스 + 상세 조회) ---
+    # --- 3. 통계 ---
     elif sel_menu == "📊 통계":
         st.subheader("📊 출석 누적 현황 및 상세 조회")
         
@@ -355,21 +388,15 @@ def main():
             df_stat = df_att.copy()
             df_stat["날짜"] = pd.to_datetime(df_stat["날짜"], errors='coerce')
             
-            # 조회 기간 설정 (기본값: 올해 1월 1일 ~ 오늘)
             c1, c2 = st.columns([2, 1])
             today = datetime.date.today()
             start_of_year = datetime.date(today.year, 1, 1)
             
-            date_range = c1.date_input(
-                "📅 조회 기간 선택", 
-                (start_of_year, today),
-                format="YYYY/MM/DD"
-            )
+            date_range = c1.date_input("📅 조회 기간 선택", (start_of_year, today), format="YYYY/MM/DD")
             
             if len(date_range) == 2:
                 start_d, end_d = date_range
                 
-                # 소그룹 필터링
                 if is_admin:
                     all_g = sorted(df_att["소그룹"].unique())
                     s_grp = c2.selectbox("그룹 선택", ["전체 보기"] + all_g)
@@ -378,58 +405,36 @@ def main():
                     if len(my_grps) > 1: s_grp = c2.selectbox("그룹 선택", my_grps)
                     else: s_grp = my_grps[0]; c2.info(f"담당: {s_grp}")
 
-                # 데이터 필터링
                 mask = (df_stat["날짜"] >= pd.Timestamp(start_d)) & (df_stat["날짜"] <= pd.Timestamp(end_d))
                 w_df = df_stat[mask]
                 
-                if s_grp != "전체 보기":
-                    w_df = w_df[w_df["소그룹"] == s_grp]
+                if s_grp != "전체 보기": w_df = w_df[w_df["소그룹"] == s_grp]
 
-                if w_df.empty:
-                    st.warning("해당 기간에 출석 기록이 없습니다.")
+                if w_df.empty: st.warning("해당 기간에 출석 기록이 없습니다.")
                 else:
                     st.divider()
                     st.markdown(f"##### 📈 {s_grp} 출석 누적 현황표")
                     
-                    # 피벗 테이블 생성 (행: 이름, 열: 모임명, 값: 횟수)
                     pivot_table = pd.crosstab(w_df["이름"], w_df["모임명"])
+                    for m_type in ALL_MEETINGS:
+                        if m_type not in pivot_table.columns: pivot_table[m_type] = 0
                     
-                    # 모든 모임 종류가 컬럼에 나오도록 보장 (없으면 0으로 채움)
-                    for m_type in MEETING_TYPES:
-                        if m_type not in pivot_table.columns:
-                            pivot_table[m_type] = 0
-                            
-                    # 컬럼 순서 정렬
-                    existing_cols = [c for c in MEETING_TYPES if c in pivot_table.columns]
-                    pivot_table = pivot_table[existing_cols]
-                    
-                    # 테이블 표시 (높이 자동 조절)
+                    pivot_table = pivot_table[[c for c in ALL_MEETINGS if c in pivot_table.columns]]
                     st.dataframe(pivot_table, use_container_width=True)
                     
-                    # [상세 내역 조회 기능]
                     st.divider()
                     st.markdown("##### 🔍 개인별 상세 출석 내역 조회")
-                    st.caption("위 표에서 숫자를 클릭해도 상세 내용이 보이지 않습니다. 아래에서 이름을 선택해주세요.")
-                    
-                    # 이름 목록 추출
                     if not pivot_table.empty:
                         name_list = sorted(pivot_table.index.tolist())
                         selected_name = st.selectbox("이름을 선택하세요", name_list)
                         
                         if selected_name:
-                            # 선택된 사람의 기록만 필터링
                             person_log = w_df[w_df["이름"] == selected_name].sort_values(by="날짜", ascending=False)
-                            person_log["날짜"] = person_log["날짜"].dt.strftime("%Y-%m-%d") # 날짜 포맷 정리
-                            
+                            person_log["날짜"] = person_log["날짜"].dt.strftime("%Y-%m-%d")
                             if not person_log.empty:
                                 st.write(f"**📌 {selected_name}님의 출석 기록 ({len(person_log)}건)**")
-                                st.dataframe(
-                                    person_log[["날짜", "모임명", "소그룹"]], 
-                                    use_container_width=True,
-                                    hide_index=True
-                                )
-                            else:
-                                st.info("상세 기록이 없습니다.")
+                                st.dataframe(person_log[["날짜", "모임명", "소그룹"]], use_container_width=True, hide_index=True)
+                            else: st.info("상세 기록이 없습니다.")
 
     # --- 4. 기도제목 ---
     elif sel_menu == "🙏 기도제목":
