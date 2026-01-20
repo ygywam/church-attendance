@@ -153,53 +153,7 @@ def get_target_columns(weekday_idx, group_name):
     elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name: return COLS_KIDS
     else: return COLS_ADULT
 
-def draw_manual_tab():
-    st.markdown("""
-    ### 📘 회정교회 출석체크 시스템 가이드
-    
-    **1. ⚠️ 주의사항**
-    * 작업 중에 **새로고침(F5)**을 하면 로그인이 풀립니다. 저장하기 전에는 주의해주세요.
-    
-    ---
-    
-    **2. 📋 출석체크 사용법**
-    * **날짜 선택:** 요일에 따라 해당되는 모임만 자동으로 나옵니다.
-    * **부서 자동 인식:** 소그룹 이름(중고등부, 청년부 등)에 따라 체크할 항목이 바뀝니다.
-    * **틀 고정:** 화면을 옆으로 밀어도 **'이름'**은 왼쪽에 고정됩니다.
-    * **저장:** 체크 후 반드시 하단의 **[저장하기]** 버튼을 눌러주세요.
-
-    ---
-
-    **3. 📊 통계 및 수정**
-    * 기간을 설정하여 누적 출석 현황을 볼 수 있습니다.
-    * 표 아래에서 **이름을 선택**하면, 상세 기록을 조회하고 **수정/삭제/추가**할 수 있습니다.
-
-    ---
-
-    **4. 👥 명단 관리**
-    * **정렬 기준:** 상단의 옵션을 통해 [가족순 / 이름순 / 소그룹순 / 생일순]으로 정렬을 바꿀 수 있습니다.
-    * **음력 생일:** '음력' 칸에 대문자 `O`를 입력하면 달력에 양력 변환 날짜로 표시됩니다.
-    """)
-
-def draw_notice_section(is_admin, current_user_name):
-    df_notices = load_data("notices")
-    if not df_notices.empty:
-        latest = df_notices.sort_values(by="날짜", ascending=False).iloc[0]
-        st.markdown(f"""<div class="notice-box">📢 <b>공지사항 ({latest['날짜']})</b><br><br>{latest['내용']}</div>""", unsafe_allow_html=True)
-    else:
-        if is_admin: st.info("등록된 공지사항이 없습니다.")
-
-    if is_admin:
-        with st.expander("📢 공지사항 등록 (관리자)"):
-            with st.form("notice_form"):
-                n_date = st.date_input("날짜", datetime.date.today())
-                n_content = st.text_area("내용", height=100)
-                if st.form_submit_button("등록"):
-                    new_n = pd.DataFrame([{"날짜": str(n_date), "내용": n_content, "작성자": current_user_name}])
-                    save_data("notices", pd.concat([df_notices, new_n], ignore_index=True))
-                    st.success("등록됨"); st.rerun()
-
-# [수정됨] 음력/양력 완벽 변환 생일 달력 로직
+# [핵심 수정] 음력/양력 완벽 변환 생일 달력 로직
 def draw_birthday_calendar(df_members):
     today = datetime.date.today()
     month = today.month
@@ -209,36 +163,35 @@ def draw_birthday_calendar(df_members):
     calendar_converter = KoreanLunarCalendar()
 
     if not df_members.empty:
+        # '음력' 컬럼이 실제로 있는지 확인 (공백 제거 후 비교)
+        cols_cleaned = [str(c).strip() for c in df_members.columns]
+        lunar_col_name = None
+        if "음력" in cols_cleaned:
+            # 실제 컬럼명 찾기
+            lunar_col_name = df_members.columns[cols_cleaned.index("음력")]
+
         for _, row in df_members.iterrows():
             try:
                 # 1. 생일 날짜 파싱 (숫자만 추출)
                 raw_birth = str(row["생일"])
                 parts = re.findall(r'\d+', raw_birth)
                 
-                # 2. 음력 여부 확인
+                # 2. 음력 여부 확인 (강력한 체크)
                 is_lunar = False
-                if "음력" in df_members.columns:
-                    # '음력' 컬럼이 있는지 확인 (공백 제거 후 확인)
-cols_cleaned = [c.strip() for c in df_members.columns]
-if "음력" in cols_cleaned:
-    # 1. 컬럼 이름이 정확하지 않아도(공백 등) 찾을 수 있게 처리
-    target_col = df_members.columns[cols_cleaned.index("음력")]
-    
-    # 2. 입력값이 알파벳 O, 숫자 0, 한글 ㅇ, Yes 등 무엇이든 OK
-    val = str(row[target_col]).strip().upper()
-    if val in ["O", "0", "ㅇ", "YES", "TRUE", "Y"]:
-        is_lunar = True
+                if lunar_col_name:
+                    val = str(row[lunar_col_name]).strip().upper()
+                    # 알파벳 O, 숫자 0, 한글 ㅇ, YES 등 모두 허용
+                    if val in ["O", "0", "ㅇ", "YES", "TRUE", "Y"]:
+                        is_lunar = True
 
                 if len(parts) >= 2:
-                    # 입력된 생일의 월/일
                     b_month_origin = int(parts[-2])
                     b_day_origin = int(parts[-1])
                     
                     if is_lunar:
                         # [음력 -> 양력 변환]
-                        # 음력 생일은 양력 연도와 다를 수 있으므로 (예: 양력 1월은 작년 음력 11~12월)
                         # 작년(-1), 올해(0), 내년(+1)의 음력 날짜를 모두 양력으로 변환해보고
-                        # 결과가 '이번 달(month)'과 일치하는지 확인합니다.
+                        # 결과가 '이번 달(month)'과 일치하는지 확인
                         check_years = [year - 1, year, year + 1]
                         
                         for check_year in check_years:
@@ -254,9 +207,11 @@ if "음력" in cols_cleaned:
                                 if s_year == year and s_month == month:
                                     display_name = f"{row['이름']}(음)"
                                     if str(s_day) not in birthdays: birthdays[str(s_day)] = []
-                                    birthdays[str(s_day)].append({"name": display_name, "style": "lunar-badge"})
+                                    # 중복 방지: 이미 같은 이름이 있으면 추가 안 함
+                                    if not any(p['name'] == display_name for p in birthdays[str(s_day)]):
+                                        birthdays[str(s_day)].append({"name": display_name, "style": "lunar-badge"})
                             except:
-                                continue # 날짜 변환 실패시 무시
+                                continue 
 
                     else:
                         # [양력] 그대로 사용
@@ -285,10 +240,6 @@ if "음력" in cols_cleaned:
                 is_today = "today" if (day == today.day and month == today.month and year == today.year) else ""
                 style = "color: red;" if (day == today.day and month == today.month and year == today.year) else ""
                 
-                # 일요일 빨간색 표시 로직 추가 (선택사항)
-                # cell_idx = week.index(day)
-                # if cell_idx == 0: style = "color: red;"
-
                 html_code += f'<div class="cal-cell {is_today}"><div style="{style} font-weight:bold;">{day}</div>'
                 
                 if str(day) in birthdays:
@@ -297,6 +248,52 @@ if "음력" in cols_cleaned:
                 html_code += '</div>'
     html_code += '</div>'
     st.markdown(html_code, unsafe_allow_html=True)
+
+def draw_manual_tab():
+    st.markdown("""
+    ### 📘 회정교회 출석체크 시스템 가이드
+    
+    **1. ⚠️ 주의사항**
+    * 작업 중에 **새로고침(F5)**을 하면 로그인이 풀립니다. 저장하기 전에는 주의해주세요.
+    
+    ---
+    
+    **2. 📋 출석체크 사용법**
+    * **날짜 선택:** 요일에 따라 해당되는 모임만 자동으로 나옵니다.
+    * **부서 자동 인식:** 소그룹 이름(중고등부, 청년부 등)에 따라 체크할 항목이 바뀝니다.
+    * **틀 고정:** 화면을 옆으로 밀어도 **'이름'**은 왼쪽에 고정됩니다.
+    * **저장:** 체크 후 반드시 하단의 **[저장하기]** 버튼을 눌러주세요.
+
+    ---
+
+    **3. 📊 통계 및 수정**
+    * 기간을 설정하여 누적 출석 현황을 볼 수 있습니다.
+    * 표 아래에서 **이름을 선택**하면, 상세 기록을 조회하고 **수정/삭제/추가**할 수 있습니다.
+
+    ---
+
+    **4. 👥 명단 관리**
+    * **정렬 기준:** 상단의 옵션을 통해 [가족순 / 이름순 / 소그룹순 / 생일순]으로 정렬을 바꿀 수 있습니다.
+    * **음력 생일:** '음력' 칸에 **O (알파벳), 0 (숫자), ㅇ (한글)** 중 아무거나 입력하면 인식됩니다.
+    """)
+
+def draw_notice_section(is_admin, current_user_name):
+    df_notices = load_data("notices")
+    if not df_notices.empty:
+        latest = df_notices.sort_values(by="날짜", ascending=False).iloc[0]
+        st.markdown(f"""<div class="notice-box">📢 <b>공지사항 ({latest['날짜']})</b><br><br>{latest['내용']}</div>""", unsafe_allow_html=True)
+    else:
+        if is_admin: st.info("등록된 공지사항이 없습니다.")
+
+    if is_admin:
+        with st.expander("📢 공지사항 등록 (관리자)"):
+            with st.form("notice_form"):
+                n_date = st.date_input("날짜", datetime.date.today())
+                n_content = st.text_area("내용", height=100)
+                if st.form_submit_button("등록"):
+                    new_n = pd.DataFrame([{"날짜": str(n_date), "내용": n_content, "작성자": current_user_name}])
+                    save_data("notices", pd.concat([df_notices, new_n], ignore_index=True))
+                    st.success("등록됨"); st.rerun()
 
 # 로그인 관련
 def process_login(username, password, cookie_manager):
@@ -321,10 +318,6 @@ def process_logout(cookie_manager):
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
     
-    # 변수 초기화
-    df_stat = pd.DataFrame(); target = pd.DataFrame()
-    t_list = pd.DataFrame(); w_df = pd.DataFrame()
-
     st.title("⛪ 회정교회 출석체크 시스템")
 
     if "logged_in" not in st.session_state:
@@ -607,7 +600,6 @@ def main():
             target = df_members[df_members["소그룹"].isin(my_gs)]
             st.info(f"담당: {', '.join(my_gs)}")
 
-        # [수정] 정렬 기능 추가
         sort_option = st.radio(
             "정렬 기준 선택", 
             ["👨‍👩‍👧‍👦 가족끼리(기본)", "🔤 이름순", "🏘️ 소그룹순", "🎂 생일순"], 
@@ -617,7 +609,6 @@ def main():
         if not target.empty:
             target = target.copy()
             if sort_option == "👨‍👩‍👧‍👦 가족끼리(기본)":
-                # 가족ID가 숫자인 경우 정렬을 위해 변환, 없으면 맨 뒤로
                 target["가족ID_정렬"] = pd.to_numeric(target["가족ID"], errors='coerce').fillna(99999)
                 target = target.sort_values(by=["가족ID_정렬", "이름"])
                 del target["가족ID_정렬"]
@@ -650,5 +641,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
