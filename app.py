@@ -32,7 +32,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v9.0", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v10.0", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -43,11 +43,29 @@ st.markdown("""
         margin-bottom: 30px !important; font-weight: 800 !important;
     }
     .stButton button { font-size: 20px !important; font-weight: bold; width: 100%; }
+    
+    /* 공지사항 박스 */
     .notice-box {
         background-color: #fff3cd; border: 2px solid #ffeeba; color: #856404;
         padding: 15px; border-radius: 10px; margin-bottom: 20px;
         text-align: center; font-size: 20px; font-weight: bold; line-height: 1.5; word-break: keep-all;
     }
+    
+    /* 사역보고 카드 스타일 */
+    .report-card {
+        background-color: #f8f9fa; border: 1px solid #dee2e6; 
+        border-radius: 10px; padding: 20px; margin-bottom: 15px;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
+    }
+    .report-header { font-size: 16px; color: #6c757d; margin-bottom: 10px; font-weight: bold;}
+    .report-content { font-size: 18px; color: #212529; white-space: pre-wrap; line-height: 1.6;}
+    .reply-box {
+        background-color: #e8f5e9; border-left: 5px solid #4caf50;
+        padding: 15px; margin-top: 15px; border-radius: 5px;
+    }
+    .reply-title { color: #2e7d32; font-weight: bold; font-size: 16px; margin-bottom: 5px; }
+
+    /* 달력 스타일 */
     .calendar-container { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; width: 100%; }
     .cal-header { text-align: center; font-weight: bold; padding: 5px 0; font-size: 16px; }
     .cal-cell {
@@ -121,8 +139,8 @@ def load_data(sheet_name):
         elif sheet_name == "notices":
             return pd.DataFrame(columns=["날짜", "내용", "작성자"])
         elif sheet_name == "reports":
-            # [수정] 답변 및 추가피드백 컬럼 추가
-            return pd.DataFrame(columns=["날짜", "작성자", "내용", "답변", "추가피드백"])
+            # [수정] 깔끔하게 4개 컬럼만 사용
+            return pd.DataFrame(columns=["날짜", "작성자", "내용", "답변"])
     return pd.DataFrame(data).astype(str)
 
 def save_data(sheet_name, df):
@@ -240,15 +258,15 @@ def draw_birthday_calendar(df_members):
 
 def draw_manual_tab():
     st.markdown("""
-    ### 📘 회정교회 출석체크 시스템 가이드 v9.0
+    ### 📘 회정교회 출석체크 시스템 가이드 v10.0
     
     **1. ⚠️ 주의사항**
     * 작업 중에 **새로고침(F5)**을 하면 로그인이 풀립니다.
     
     ---
-    **2. 📨 사역 보고 (New!)**
-    * **소그룹장:** 사역 내용을 작성하고, 관리자의 답변을 확인한 뒤 '추가피드백'을 남길 수 있습니다.
-    * **관리자:** 올라온 보고에 대해 '답변' 칸에 피드백을 적고 저장할 수 있습니다.
+    **2. 📨 사역 보고**
+    * **소그룹장:** 매주 사역 내용을 '카드 뉴스' 형태로 올릴 수 있습니다. 관리자가 답글을 달면 바로 확인할 수 있습니다.
+    * **관리자:** 올라온 보고를 읽고, 바로 아래에 피드백(답변)을 남기고 저장할 수 있습니다.
     
     ---
     **3. 👥 명단 관리**
@@ -296,7 +314,7 @@ def process_logout(cookie_manager):
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
     
-    st.title("⛪ 회정교회 출석체크 시스템 v9.0")
+    st.title("⛪ 회정교회 출석체크 시스템 v10.0")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -348,7 +366,7 @@ def main():
     if sel_menu == "🏠 홈":
         draw_notice_section(is_admin, current_user_name)
         st.subheader("이번 달 주요 일정")
-        if st.button("🔄 일정 새로고침 (데이터가 안 보이면 누르세요)"):
+        if st.button("🔄 일정 새로고침"):
             st.cache_data.clear()
             st.rerun()
         draw_birthday_calendar(df_members)
@@ -530,13 +548,12 @@ def main():
                 for i, r in hist.iterrows():
                     st.info(f"**{r['날짜']}**: {r['내용']}")
 
-    # --- 6. 사역 보고 (쌍방 소통 기능 업데이트) ---
+    # --- 6. 사역 보고 (쌍방 소통 기능 - 카드뷰) ---
     elif sel_menu == "📨 사역 보고":
-        st.subheader("📨 소그룹 사역 보고 (쌍방 소통)")
+        st.subheader("📨 소그룹 사역 보고")
         
-        # 데이터프레임에 새 컬럼(답변, 추가피드백)이 없으면 안전하게 추가
+        # [데이터 구조 확인] 답변 컬럼이 없으면 에러가 나므로 안전장치
         if "답변" not in df_reports.columns: df_reports["답변"] = ""
-        if "추가피드백" not in df_reports.columns: df_reports["추가피드백"] = ""
 
         if is_admin:
             st.markdown("### 📥 관리자 모드: 보고서 확인 및 답변 작성")
@@ -554,107 +571,83 @@ def main():
             if weekly_reports.empty:
                 st.info("해당 주간에 제출된 보고서가 없습니다.")
             else:
-                st.info("💡 팁: '답변' 칸을 클릭하여 피드백을 작성한 후 하단 [저장하기] 버튼을 눌러주세요.")
-                
-                # 관리자용 컬럼 설정 (답변만 수정 가능)
-                col_config = {
-                    "날짜": st.column_config.TextColumn(disabled=True),
-                    "작성자": st.column_config.TextColumn(disabled=True),
-                    "내용": st.column_config.TextColumn("보고 내용", disabled=True, width="medium"),
-                    "답변": st.column_config.TextColumn("관리자 답변 (작성가능)", disabled=False, width="medium"),
-                    "추가피드백": st.column_config.TextColumn("소그룹장 피드백", disabled=True, width="medium")
-                }
-                
-                # 데이터 에디터로 보여주기
-                edited_reports = st.data_editor(
-                    weekly_reports, 
-                    column_config=col_config, 
-                    use_container_width=True, 
-                    hide_index=True,
-                    num_rows="fixed"
-                )
-                
-                if st.button("💾 관리자 답변 저장하기"):
-                    # 전체 데이터에서 해당 주간 데이터만 교체하는 방식
-                    # (간단하게 구현하기 위해: 날짜+작성자+내용이 키라고 가정하거나, 그냥 전체 덮어쓰기 로직 사용)
-                    # 여기서는 안전하게: 수정된 edited_reports 내용을 원본 df_reports에 업데이트
-                    
-                    # 1. 수정된 내용 리스트로 변환
-                    for i, row in edited_reports.iterrows():
-                        # 원본 데이터프레임에서 날짜, 작성자, 내용이 일치하는 행을 찾아 답변 업데이트
-                        # (단, 중복 내용이 있을 수 있으니 인덱스 매칭이 제일 정확하지만 필터링된 뷰라 인덱스가 다를 수 있음)
-                        # 가장 확실한 방법: 전체 데이터를 다시 저장하되, 현재 수정된 부분만 반영
-                        # 여기서는 간단히: 필터링된 것 외의 데이터 + 수정된 데이터 합치기
-                        pass
-
-                    # 필터링되지 않은 나머지 데이터
-                    df_others = df_reports[~mask]
-                    # 합치기
-                    df_final = pd.concat([df_others, edited_reports], ignore_index=True)
-                    # 날짜순 정렬
-                    df_final["날짜_dt"] = pd.to_datetime(df_final["날짜"], errors='coerce')
-                    df_final = df_final.sort_values(by="날짜_dt", ascending=False).drop(columns=["날짜_dt"])
-                    
-                    save_data("reports", df_final)
-                    st.success("✅ 답변이 저장되었습니다!"); st.rerun()
+                # [카드 뷰 + 답변 입력 루프]
+                for i, row in weekly_reports.iterrows():
+                    with st.container():
+                        # 카드 디자인 출력
+                        st.markdown(f"""
+                        <div class="report-card">
+                            <div class="report-header">🗓️ {row['날짜']} | 👤 {row['작성자']}</div>
+                            <div class="report-content">{row['내용']}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # 관리자 답변 입력창 (기존 답변이 있으면 불러옴)
+                        # key를 유니크하게 만들기 위해 index 사용
+                        new_ans = st.text_area(f"💬 {row['작성자']}님 보고에 대한 피드백 작성", value=row['답변'], key=f"ans_{i}", height=70)
+                        
+                        if st.button("답변 저장", key=f"btn_{i}"):
+                            # 1. 원본 DataFrame에서 해당 행(row)을 찾아서 '답변' 업데이트
+                            # 여기서는 편의상 전체 데이터를 다시 로드해서 수정하지 않고,
+                            # 현재 로드된 df_reports에서 인덱스를 찾아 수정 후 전체 저장
+                            
+                            # 주의: weekly_reports는 필터링된 뷰이므로, 원본 df_reports의 인덱스를 찾아야 함
+                            original_idx = row.name # 원본 인덱스
+                            df_reports.at[original_idx, "답변"] = new_ans
+                            
+                            save_data("reports", df_reports)
+                            st.success(f"✅ {row['작성자']}님에게 답변을 저장했습니다!"); time.sleep(1); st.rerun()
+                        
+                        st.divider()
 
         else:
             # --- 소그룹장 모드 ---
-            st.markdown(f"### 📂 {current_user_name}님의 보고서 및 피드백")
+            st.markdown(f"### 📂 {current_user_name}님의 보고서")
             
             # 1. 새 보고서 작성
             with st.expander("📝 새 보고서 작성하기"):
                 with st.form("report_form"):
                     r_date = st.date_input("작성일", datetime.date.today())
-                    r_content = st.text_area("내용", height=100)
+                    r_content = st.text_area("내용", height=150, placeholder="이번 주 모임 내용과 특이사항을 기록해주세요.")
                     if st.form_submit_button("제출"):
                         new_r = pd.DataFrame([{
                             "날짜": str(r_date), 
                             "작성자": current_user_name, 
                             "내용": r_content, 
-                            "답변": "", 
-                            "추가피드백": ""
+                            "답변": ""
                         }])
                         save_data("reports", pd.concat([df_reports, new_r], ignore_index=True))
                         st.success("제출 완료"); st.rerun()
             
             st.divider()
             
-            # 2. 내 보고서 목록 (답변 확인 및 추가 피드백 작성)
+            # 2. 내 보고서 목록 (답변 확인)
             my_reports = df_reports[df_reports["작성자"] == current_user_name].copy()
             if my_reports.empty:
                 st.info("제출한 보고서가 없습니다.")
             else:
-                st.info("💡 관리자가 답변을 달면 '추가피드백'을 작성할 수 있습니다.")
                 # 최신순 정렬
                 my_reports["날짜_dt"] = pd.to_datetime(my_reports["날짜"], errors='coerce')
                 my_reports = my_reports.sort_values(by="날짜_dt", ascending=False).drop(columns=["날짜_dt"])
                 
-                # 소그룹장용 컬럼 설정 (추가피드백만 수정 가능)
-                col_config_user = {
-                    "날짜": st.column_config.TextColumn(disabled=True),
-                    "작성자": st.column_config.TextColumn(disabled=True),
-                    "내용": st.column_config.TextColumn(disabled=True, width="medium"),
-                    "답변": st.column_config.TextColumn("관리자 답변", disabled=True, width="medium"),
-                    "추가피드백": st.column_config.TextColumn("추가피드백 (작성가능)", disabled=False, width="medium")
-                }
-                
-                edited_my_reports = st.data_editor(
-                    my_reports,
-                    column_config=col_config_user,
-                    use_container_width=True,
-                    hide_index=True,
-                    num_rows="fixed"
-                )
-                
-                if st.button("💾 추가피드백 저장"):
-                    # 내 보고서가 아닌 다른 사람들의 보고서
-                    others_reports = df_reports[df_reports["작성자"] != current_user_name]
-                    # 합치기
-                    df_final_user = pd.concat([others_reports, edited_my_reports], ignore_index=True)
+                for i, row in my_reports.iterrows():
+                    html_content = f"""
+                    <div class="report-card">
+                        <div class="report-header">🗓️ {row['날짜']} 제출</div>
+                        <div class="report-content">{row['내용']}</div>
+                    """
                     
-                    save_data("reports", df_final_user)
-                    st.success("✅ 피드백이 저장되었습니다!"); st.rerun()
+                    # 답변이 있으면 초록색 박스로 표시
+                    if row['답변'] and str(row['답변']).strip() != "":
+                        html_content += f"""
+                        <div class="reply-box">
+                            <div class="reply-title">💌 목회자 피드백</div>
+                            <div>{row['답변']}</div>
+                        </div>
+                        """
+                    
+                    html_content += "</div>"
+                    st.markdown(html_content, unsafe_allow_html=True)
 
     # --- 7. 명단 관리 ---
     elif sel_menu == "👥 명단 관리":
