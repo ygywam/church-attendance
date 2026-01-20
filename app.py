@@ -32,7 +32,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v8.2", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v9.0", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -121,7 +121,8 @@ def load_data(sheet_name):
         elif sheet_name == "notices":
             return pd.DataFrame(columns=["날짜", "내용", "작성자"])
         elif sheet_name == "reports":
-            return pd.DataFrame(columns=["날짜", "작성자", "내용"])
+            # [수정] 답변 및 추가피드백 컬럼 추가
+            return pd.DataFrame(columns=["날짜", "작성자", "내용", "답변", "추가피드백"])
     return pd.DataFrame(data).astype(str)
 
 def save_data(sheet_name, df):
@@ -153,7 +154,7 @@ def get_target_columns(weekday_idx, group_name):
     elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name: return COLS_KIDS
     else: return COLS_ADULT
 
-# [수정 완료] 음력/양력 완벽 변환 생일 달력 로직 v8.2 (에러 수정판)
+# [음력/양력 완벽 변환 생일 달력 로직 v8.2]
 def draw_birthday_calendar(df_members):
     today = datetime.date.today()
     month = today.month
@@ -163,7 +164,6 @@ def draw_birthday_calendar(df_members):
     calendar_converter = KoreanLunarCalendar()
 
     if not df_members.empty:
-        # '음력' 컬럼 존재 확인
         cols_cleaned = [str(c).strip() for c in df_members.columns]
         lunar_col_name = None
         if "음력" in cols_cleaned:
@@ -171,10 +171,8 @@ def draw_birthday_calendar(df_members):
 
         for _, row in df_members.iterrows():
             try:
-                # 1. 생일 날짜 파싱
                 raw_birth = str(row["생일"])
                 parts = re.findall(r'\d+', raw_birth)
-                
                 b_month_origin = 0
                 b_day_origin = 0
 
@@ -185,10 +183,8 @@ def draw_birthday_calendar(df_members):
                     b_month_origin = int(parts[0])
                     b_day_origin = int(parts[1])
                 
-                if b_month_origin == 0 or b_day_origin == 0:
-                    continue
+                if b_month_origin == 0 or b_day_origin == 0: continue
 
-                # 2. 음력 여부 확인
                 is_lunar = False
                 if lunar_col_name:
                     val = str(row[lunar_col_name]).strip().upper()
@@ -196,30 +192,21 @@ def draw_birthday_calendar(df_members):
                         is_lunar = True
 
                 if is_lunar:
-                    # [음력 -> 양력 변환 로직 수정]
                     check_years = [year - 1, year, year + 1]
-                    
                     for check_year in check_years:
                         try:
-                            # 여기서 에러가 났었음! -> 수정함
                             calendar_converter.setLunarDate(check_year, b_month_origin, b_day_origin, False)
-                            
-                            # 올바른 값 가져오기 방식
                             s_year = calendar_converter.solarYear
                             s_month = calendar_converter.solarMonth
                             s_day = calendar_converter.solarDay
                             
-                            # 변환된 양력 날짜가 '현재 표시 중인 연도와 월'과 일치하는지 확인
                             if s_year == year and s_month == month:
                                 display_name = f"{row['이름']}(음)"
                                 if str(s_day) not in birthdays: birthdays[str(s_day)] = []
-                                # 중복 방지
                                 if not any(p['name'] == display_name for p in birthdays[str(s_day)]):
                                     birthdays[str(s_day)].append({"name": display_name, "style": "lunar-badge"})
-                        except:
-                            continue 
+                        except: continue 
                 else:
-                    # [양력]
                     if b_month_origin == month:
                         display_name = f"{row['이름']}"
                         if str(b_day_origin) not in birthdays: birthdays[str(b_day_origin)] = []
@@ -243,9 +230,7 @@ def draw_birthday_calendar(df_members):
             else:
                 is_today = "today" if (day == today.day and month == today.month and year == today.year) else ""
                 style = "color: red;" if (day == today.day and month == today.month and year == today.year) else ""
-                
                 html_code += f'<div class="cal-cell {is_today}"><div style="{style} font-weight:bold;">{day}</div>'
-                
                 if str(day) in birthdays:
                     for person in birthdays[str(day)]:
                         html_code += f'<span class="{person["style"]}">🎂{person["name"]}</span>'
@@ -255,30 +240,19 @@ def draw_birthday_calendar(df_members):
 
 def draw_manual_tab():
     st.markdown("""
-    ### 📘 회정교회 출석체크 시스템 가이드 v8.2
+    ### 📘 회정교회 출석체크 시스템 가이드 v9.0
     
     **1. ⚠️ 주의사항**
-    * 작업 중에 **새로고침(F5)**을 하면 로그인이 풀립니다. 저장하기 전에는 주의해주세요.
+    * 작업 중에 **새로고침(F5)**을 하면 로그인이 풀립니다.
     
     ---
+    **2. 📨 사역 보고 (New!)**
+    * **소그룹장:** 사역 내용을 작성하고, 관리자의 답변을 확인한 뒤 '추가피드백'을 남길 수 있습니다.
+    * **관리자:** 올라온 보고에 대해 '답변' 칸에 피드백을 적고 저장할 수 있습니다.
     
-    **2. 📋 출석체크 사용법**
-    * **날짜 선택:** 요일에 따라 해당되는 모임만 자동으로 나옵니다.
-    * **부서 자동 인식:** 소그룹 이름(중고등부, 청년부 등)에 따라 체크할 항목이 바뀝니다.
-    * **틀 고정:** 화면을 옆으로 밀어도 **'이름'**은 왼쪽에 고정됩니다.
-    * **저장:** 체크 후 반드시 하단의 **[저장하기]** 버튼을 눌러주세요.
-
     ---
-
-    **3. 📊 통계 및 수정**
-    * 기간을 설정하여 누적 출석 현황을 볼 수 있습니다.
-    * 표 아래에서 **이름을 선택**하면, 상세 기록을 조회하고 **수정/삭제/추가**할 수 있습니다.
-
-    ---
-
-    **4. 👥 명단 관리**
-    * **정렬 기준:** 상단의 옵션을 통해 [가족순 / 이름순 / 소그룹순 / 생일순]으로 정렬을 바꿀 수 있습니다.
-    * **음력 생일:** '음력' 칸에 **O (알파벳), 0 (숫자), ㅇ (한글)** 중 아무거나 입력하면 인식됩니다.
+    **3. 👥 명단 관리**
+    * **음력 생일:** '음력' 칸에 **O** 입력 시 달력에 양력 변환 날짜로 표시됩니다.
     """)
 
 def draw_notice_section(is_admin, current_user_name):
@@ -322,7 +296,7 @@ def process_logout(cookie_manager):
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
     
-    st.title("⛪ 회정교회 출석체크 시스템 v8.2")
+    st.title("⛪ 회정교회 출석체크 시스템 v9.0")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -355,7 +329,6 @@ def main():
     if not st.session_state["logged_in"]:
         st.warning("👈 로그인해주세요."); st.stop()
 
-    # 데이터 로드
     current_user = st.session_state["user_info"]
     current_user_name = current_user["이름"]
     is_admin = (current_user["역할"] == "admin")
@@ -375,7 +348,6 @@ def main():
     if sel_menu == "🏠 홈":
         draw_notice_section(is_admin, current_user_name)
         st.subheader("이번 달 주요 일정")
-        # [데이터 리로드 버튼 추가]
         if st.button("🔄 일정 새로고침 (데이터가 안 보이면 누르세요)"):
             st.cache_data.clear()
             st.rerun()
@@ -439,9 +411,7 @@ def main():
                     mask_date = df_att["날짜"] == str(chk_date)
                     mask_grp = df_att["소그룹"] == grp if grp != "전체 보기" else True
                     mask_meeting = df_att["모임명"].isin(target_meetings)
-                    
                     df_clean = df_att[~(mask_date & mask_grp & mask_meeting)]
-                    
                     new_records = []
                     for _, row in edited_df.iterrows():
                         name = row["이름"]
@@ -560,46 +530,133 @@ def main():
                 for i, r in hist.iterrows():
                     st.info(f"**{r['날짜']}**: {r['내용']}")
 
-    # --- 6. 사역 보고 ---
+    # --- 6. 사역 보고 (쌍방 소통 기능 업데이트) ---
     elif sel_menu == "📨 사역 보고":
-        st.subheader("📨 소그룹 사역 보고")
+        st.subheader("📨 소그룹 사역 보고 (쌍방 소통)")
+        
+        # 데이터프레임에 새 컬럼(답변, 추가피드백)이 없으면 안전하게 추가
+        if "답변" not in df_reports.columns: df_reports["답변"] = ""
+        if "추가피드백" not in df_reports.columns: df_reports["추가피드백"] = ""
+
         if is_admin:
-            st.markdown("### 📥 주간 사역 보고 리스트")
+            st.markdown("### 📥 관리자 모드: 보고서 확인 및 답변 작성")
             c1, c2 = st.columns([1, 2])
             r_date_adm = c1.date_input("조회 기준 날짜", datetime.date.today(), key="r_date_adm")
             sun, sat = get_week_range(r_date_adm)
             c2.caption(f"📅 조회 기간: {sun.strftime('%Y-%m-%d')} ~ {sat.strftime('%Y-%m-%d')}")
             
+            # 날짜 필터링
             df_rep_stat = df_reports.copy()
             df_rep_stat["날짜"] = pd.to_datetime(df_rep_stat["날짜"], errors='coerce')
             mask = (df_rep_stat["날짜"] >= pd.Timestamp(sun)) & (df_rep_stat["날짜"] <= pd.Timestamp(sat))
             weekly_reports = df_reports[mask].sort_values(by="날짜", ascending=False)
             
-            if weekly_reports.empty: st.info("해당 주간에 제출된 보고서가 없습니다.")
+            if weekly_reports.empty:
+                st.info("해당 주간에 제출된 보고서가 없습니다.")
             else:
-                for i, row in weekly_reports.iterrows():
-                    with st.container():
-                        st.markdown(f"**🗓️ {row['날짜']} | 👤 {row['작성자']}**")
-                        st.info(row['내용'])
+                st.info("💡 팁: '답변' 칸을 클릭하여 피드백을 작성한 후 하단 [저장하기] 버튼을 눌러주세요.")
+                
+                # 관리자용 컬럼 설정 (답변만 수정 가능)
+                col_config = {
+                    "날짜": st.column_config.TextColumn(disabled=True),
+                    "작성자": st.column_config.TextColumn(disabled=True),
+                    "내용": st.column_config.TextColumn("보고 내용", disabled=True, width="medium"),
+                    "답변": st.column_config.TextColumn("관리자 답변 (작성가능)", disabled=False, width="medium"),
+                    "추가피드백": st.column_config.TextColumn("소그룹장 피드백", disabled=True, width="medium")
+                }
+                
+                # 데이터 에디터로 보여주기
+                edited_reports = st.data_editor(
+                    weekly_reports, 
+                    column_config=col_config, 
+                    use_container_width=True, 
+                    hide_index=True,
+                    num_rows="fixed"
+                )
+                
+                if st.button("💾 관리자 답변 저장하기"):
+                    # 전체 데이터에서 해당 주간 데이터만 교체하는 방식
+                    # (간단하게 구현하기 위해: 날짜+작성자+내용이 키라고 가정하거나, 그냥 전체 덮어쓰기 로직 사용)
+                    # 여기서는 안전하게: 수정된 edited_reports 내용을 원본 df_reports에 업데이트
+                    
+                    # 1. 수정된 내용 리스트로 변환
+                    for i, row in edited_reports.iterrows():
+                        # 원본 데이터프레임에서 날짜, 작성자, 내용이 일치하는 행을 찾아 답변 업데이트
+                        # (단, 중복 내용이 있을 수 있으니 인덱스 매칭이 제일 정확하지만 필터링된 뷰라 인덱스가 다를 수 있음)
+                        # 가장 확실한 방법: 전체 데이터를 다시 저장하되, 현재 수정된 부분만 반영
+                        # 여기서는 간단히: 필터링된 것 외의 데이터 + 수정된 데이터 합치기
+                        pass
+
+                    # 필터링되지 않은 나머지 데이터
+                    df_others = df_reports[~mask]
+                    # 합치기
+                    df_final = pd.concat([df_others, edited_reports], ignore_index=True)
+                    # 날짜순 정렬
+                    df_final["날짜_dt"] = pd.to_datetime(df_final["날짜"], errors='coerce')
+                    df_final = df_final.sort_values(by="날짜_dt", ascending=False).drop(columns=["날짜_dt"])
+                    
+                    save_data("reports", df_final)
+                    st.success("✅ 답변이 저장되었습니다!"); st.rerun()
+
         else:
-            st.caption("관리자에게 전달할 내용을 작성해주세요.")
-            with st.expander("📝 새 보고서 작성하기", expanded=True):
+            # --- 소그룹장 모드 ---
+            st.markdown(f"### 📂 {current_user_name}님의 보고서 및 피드백")
+            
+            # 1. 새 보고서 작성
+            with st.expander("📝 새 보고서 작성하기"):
                 with st.form("report_form"):
                     r_date = st.date_input("작성일", datetime.date.today())
-                    r_content = st.text_area("내용", height=150)
+                    r_content = st.text_area("내용", height=100)
                     if st.form_submit_button("제출"):
-                        new_r = pd.DataFrame([{"날짜": str(r_date), "작성자": current_user_name, "내용": r_content}])
+                        new_r = pd.DataFrame([{
+                            "날짜": str(r_date), 
+                            "작성자": current_user_name, 
+                            "내용": r_content, 
+                            "답변": "", 
+                            "추가피드백": ""
+                        }])
                         save_data("reports", pd.concat([df_reports, new_r], ignore_index=True))
                         st.success("제출 완료"); st.rerun()
+            
             st.divider()
-            st.markdown(f"### 📂 {current_user_name}님의 보낸 내역")
-            my_r = df_reports[df_reports["작성자"] == current_user_name]
-            if my_r.empty: st.info("내역 없음")
+            
+            # 2. 내 보고서 목록 (답변 확인 및 추가 피드백 작성)
+            my_reports = df_reports[df_reports["작성자"] == current_user_name].copy()
+            if my_reports.empty:
+                st.info("제출한 보고서가 없습니다.")
             else:
-                for i, row in my_r.sort_values(by="날짜", ascending=False).iterrows():
-                    st.text(f"📅 {row['날짜']}"); st.info(row['내용'])
+                st.info("💡 관리자가 답변을 달면 '추가피드백'을 작성할 수 있습니다.")
+                # 최신순 정렬
+                my_reports["날짜_dt"] = pd.to_datetime(my_reports["날짜"], errors='coerce')
+                my_reports = my_reports.sort_values(by="날짜_dt", ascending=False).drop(columns=["날짜_dt"])
+                
+                # 소그룹장용 컬럼 설정 (추가피드백만 수정 가능)
+                col_config_user = {
+                    "날짜": st.column_config.TextColumn(disabled=True),
+                    "작성자": st.column_config.TextColumn(disabled=True),
+                    "내용": st.column_config.TextColumn(disabled=True, width="medium"),
+                    "답변": st.column_config.TextColumn("관리자 답변", disabled=True, width="medium"),
+                    "추가피드백": st.column_config.TextColumn("추가피드백 (작성가능)", disabled=False, width="medium")
+                }
+                
+                edited_my_reports = st.data_editor(
+                    my_reports,
+                    column_config=col_config_user,
+                    use_container_width=True,
+                    hide_index=True,
+                    num_rows="fixed"
+                )
+                
+                if st.button("💾 추가피드백 저장"):
+                    # 내 보고서가 아닌 다른 사람들의 보고서
+                    others_reports = df_reports[df_reports["작성자"] != current_user_name]
+                    # 합치기
+                    df_final_user = pd.concat([others_reports, edited_my_reports], ignore_index=True)
+                    
+                    save_data("reports", df_final_user)
+                    st.success("✅ 피드백이 저장되었습니다!"); st.rerun()
 
-    # --- 7. 명단 관리 (정렬 기능 추가) ---
+    # --- 7. 명단 관리 ---
     elif sel_menu == "👥 명단 관리":
         st.subheader("명단 관리")
         if is_admin: target = df_members
