@@ -32,7 +32,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v10.1", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v2.1", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -82,6 +82,12 @@ st.markdown("""
         display: block; background-color: #f3e5f5; color: #7b1fa2;
         font-size: 12px; border-radius: 4px; padding: 2px; margin-top: 4px;
         word-break: keep-all; line-height: 1.2; font-weight: bold;
+    }
+    /* 탭 메뉴 설명 박스 */
+    .info-tip {
+        background-color: #e3f2fd; border-left: 5px solid #2196f3;
+        padding: 15px; margin-bottom: 20px; border-radius: 5px; color: #0d47a1;
+        font-size: 16px;
     }
     @media only screen and (max-width: 600px) {
         h1 { font-size: 28px !important; margin-bottom: 15px !important; }
@@ -171,7 +177,6 @@ def get_target_columns(weekday_idx, group_name):
     elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name: return COLS_KIDS
     else: return COLS_ADULT
 
-# [수정] 생일 달력: 이름 옆에 (소그룹) 표기 추가
 def draw_birthday_calendar(df_members):
     today = datetime.date.today()
     month = today.month
@@ -202,7 +207,6 @@ def draw_birthday_calendar(df_members):
                 
                 if b_month_origin == 0 or b_day_origin == 0: continue
 
-                # 소그룹 정보 가져오기
                 group_name = str(row.get("소그룹", "")).strip()
 
                 is_lunar = False
@@ -221,7 +225,6 @@ def draw_birthday_calendar(df_members):
                             s_day = calendar_converter.solarDay
                             
                             if s_year == year and s_month == month:
-                                # [수정] 이름(소그룹)(음) 형식
                                 display_name = f"{row['이름']}({group_name})(음)"
                                 if str(s_day) not in birthdays: birthdays[str(s_day)] = []
                                 if not any(p['name'] == display_name for p in birthdays[str(s_day)]):
@@ -229,7 +232,6 @@ def draw_birthday_calendar(df_members):
                         except: continue 
                 else:
                     if b_month_origin == month:
-                        # [수정] 이름(소그룹) 형식
                         display_name = f"{row['이름']}({group_name})"
                         if str(b_day_origin) not in birthdays: birthdays[str(b_day_origin)] = []
                         birthdays[str(b_day_origin)].append({"name": display_name, "style": "b-badge"})
@@ -260,22 +262,57 @@ def draw_birthday_calendar(df_members):
     html_code += '</div>'
     st.markdown(html_code, unsafe_allow_html=True)
 
+# [수정] 상세하고 친절한 사용설명서 함수
 def draw_manual_tab():
     st.markdown("""
-    ### 📘 회정교회 출석체크 시스템 가이드 v10.1
+    ## 📘 회정교회 출석체크 시스템 사용법 (v2.1)
     
-    **1. ⚠️ 주의사항**
-    * 작업 중에 **새로고침(F5)**을 하면 로그인이 풀립니다.
-    
-    ---
-    **2. 📨 사역 보고**
-    * **소그룹장:** 매주 사역 내용을 '카드 뉴스' 형태로 올릴 수 있습니다. 관리자가 답글을 달면 바로 확인할 수 있습니다.
-    * **관리자:** 올라온 보고를 읽고, 바로 아래에 피드백(답변)을 남기고 저장할 수 있습니다.
+    환영합니다! 이 시스템은 소그룹 리더님들이 스마트폰으로 간편하게 사역을 관리하실 수 있도록 만들어졌습니다.
+    처음 사용하셔도 괜찮아요. 아래 설명대로 천천히 따라해보세요. 😊
     
     ---
-    **3. 👥 명단 관리**
-    * **음력 생일:** '음력' 칸에 **O** 입력 시 달력에 양력 변환 날짜로 표시됩니다.
     """)
+    
+    with st.expander("✅ 1. 출석체크 하는 법 (가장 중요!)", expanded=True):
+        st.markdown("""
+        1. **메뉴 선택:** 상단 메뉴에서 **[📋 출석체크]**를 눌러주세요.
+        2. **날짜 선택:** 오늘 날짜가 자동으로 선택되어 있습니다. (지난 날짜도 선택 가능)
+        3. **소그룹 확인:** 본인이 담당한 소그룹 명단이 자동으로 나옵니다.
+        4. **체크하기:** * 표의 오른쪽 **체크박스(ㅁ)**를 눌러 출석한 분들을 체크해주세요.
+           * 화면을 오른쪽으로 밀어도 **이름은 왼쪽에 고정**되어 있어 헷갈리지 않아요!
+        5. **저장 필수:** 체크를 다 하셨다면 표 아래에 있는 **[✅ 출석 저장하기]** 버튼을 꼭! 눌러주세요.
+           * *"저장 완료!"* 메시지가 뜨면 성공입니다.
+        """)
+
+    with st.expander("📊 2. 지난 출석 확인 및 수정하기"):
+        st.markdown("""
+        1. **메뉴 선택:** 상단 메뉴에서 **[📊 통계]**를 눌러주세요.
+        2. **기간 조회:** 원하는 기간을 설정하면 누가 얼마나 왔는지 한눈에 표로 보여줍니다.
+        3. **수정 기능:**
+           * 만약 지난주에 실수로 체크를 못 했다면?
+           * 표 아래에 있는 **[수정할 이름 선택]** 상자에서 성도님 이름을 찾으세요.
+           * 그분의 출석 기록이 나오면 체크박스를 수정하고 **[💾 수정사항 저장하기]**를 누르면 끝!
+        """)
+
+    with st.expander("📨 3. 사역 보고서 작성하기"):
+        st.markdown("""
+        1. **메뉴 선택:** 상단 메뉴에서 **[📨 사역 보고]**를 눌러주세요.
+        2. **보고서 쓰기:**
+           * **[📝 새 보고서 작성하기]**를 누르면 입력창이 열립니다.
+           * 이번 주 모임 내용, 심방 내용, 특이사항 등을 편하게 적어주세요.
+           * **[제출]** 버튼을 누르면 목사님께 전달됩니다.
+        3. **피드백 확인:**
+           * 목사님이 보고서를 읽고 답글을 남기시면, 내 보고서 아래에 **초록색 상자(💌 목회자 피드백)**로 표시됩니다.
+        """)
+
+    with st.expander("🎂 4. 생일 및 명단 관리"):
+        st.markdown("""
+        * **생일 달력:** **[🏠 홈]** 화면에 이번 달 생일자가 모두 표시됩니다. (음력 생일도 자동 변환되어 나와요!)
+        * **명단 수정:** **[👥 명단 관리]** 메뉴에서 전화번호나 주소가 바뀌었을 때 직접 수정하고 저장할 수 있습니다.
+        * **음력 생일 등록:** 명단 관리에서 **'음력'** 칸에 알파벳 **O**를 입력하면, 자동으로 양력으로 변환되어 달력에 표시됩니다.
+        """)
+        
+    st.info("💡 사용하시다가 안 되는 부분이 있거나 건의사항이 있으면 언제든 말씀해주세요!")
 
 def draw_notice_section(is_admin, current_user_name):
     df_notices = load_data("notices")
@@ -318,7 +355,7 @@ def process_logout(cookie_manager):
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
     
-    st.title("⛪ 회정교회 출석체크 시스템 v10.1")
+    st.title("⛪ 회정교회 출석체크 시스템 v2.1")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -368,6 +405,7 @@ def main():
 
     # --- 1. 홈 ---
     if sel_menu == "🏠 홈":
+        st.markdown('<div class="info-tip">👋 환영합니다! 공지사항과 이번 달 생일자를 확인해보세요.</div>', unsafe_allow_html=True)
         draw_notice_section(is_admin, current_user_name)
         st.subheader("이번 달 주요 일정")
         if st.button("🔄 일정 새로고침"):
@@ -382,6 +420,7 @@ def main():
     # --- 3. 출석체크 ---
     elif sel_menu == "📋 출석체크":
         st.subheader("📋 요일별 맞춤 출석체크")
+        st.markdown('<div class="info-tip">💡 <b>Tip:</b> 날짜를 선택하면 해당 요일의 모임이 자동으로 뜹니다. 체크 후 반드시 하단 <b>[저장하기]</b>를 눌러주세요.</div>', unsafe_allow_html=True)
         
         c1, c2 = st.columns(2)
         chk_date = c1.date_input("날짜 선택", datetime.date.today())
@@ -450,6 +489,8 @@ def main():
     # --- 4. 통계 ---
     elif sel_menu == "📊 통계":
         st.subheader("📊 출석 누적 현황 및 상세 조회")
+        st.markdown('<div class="info-tip">💡 <b>Tip:</b> 기간을 설정하여 출석 현황을 한눈에 보세요. 지난주 출석을 수정하려면 <b>하단 수정 메뉴</b>를 이용하세요.</div>', unsafe_allow_html=True)
+
         if df_att.empty: st.info("데이터가 없습니다.")
         else:
             df_stat = df_att.copy()
@@ -515,6 +556,8 @@ def main():
     # --- 5. 기도제목 ---
     elif sel_menu == "🙏 기도제목":
         st.subheader("기도제목 관리")
+        st.markdown('<div class="info-tip">💡 <b>Tip:</b> 소그룹원들의 기도제목을 기록하고 히스토리를 관리해보세요.</div>', unsafe_allow_html=True)
+        
         if is_admin:
             st.markdown("### 🗓️ 주간 전체 기도제목 모아보기")
             c1, c2 = st.columns([1, 2])
@@ -552,11 +595,11 @@ def main():
                 for i, r in hist.iterrows():
                     st.info(f"**{r['날짜']}**: {r['내용']}")
 
-    # --- 6. 사역 보고 (쌍방 소통 기능 - 카드뷰) ---
+    # --- 6. 사역 보고 ---
     elif sel_menu == "📨 사역 보고":
         st.subheader("📨 소그룹 사역 보고")
+        st.markdown('<div class="info-tip">💡 <b>Tip:</b> 매주 소그룹 사역 내용을 적어주세요. 목사님의 답변도 여기서 확인할 수 있습니다.</div>', unsafe_allow_html=True)
         
-        # [데이터 구조 확인] 답변 컬럼이 없으면 에러가 나므로 안전장치
         if "답변" not in df_reports.columns: df_reports["답변"] = ""
 
         if is_admin:
@@ -566,7 +609,6 @@ def main():
             sun, sat = get_week_range(r_date_adm)
             c2.caption(f"📅 조회 기간: {sun.strftime('%Y-%m-%d')} ~ {sat.strftime('%Y-%m-%d')}")
             
-            # 날짜 필터링
             df_rep_stat = df_reports.copy()
             df_rep_stat["날짜"] = pd.to_datetime(df_rep_stat["날짜"], errors='coerce')
             mask = (df_rep_stat["날짜"] >= pd.Timestamp(sun)) & (df_rep_stat["날짜"] <= pd.Timestamp(sat))
@@ -575,10 +617,8 @@ def main():
             if weekly_reports.empty:
                 st.info("해당 주간에 제출된 보고서가 없습니다.")
             else:
-                # [카드 뷰 + 답변 입력 루프]
                 for i, row in weekly_reports.iterrows():
                     with st.container():
-                        # 카드 디자인 출력
                         st.markdown(f"""
                         <div class="report-card">
                             <div class="report-header">🗓️ {row['날짜']} | 👤 {row['작성자']}</div>
@@ -586,7 +626,6 @@ def main():
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        # 관리자 답변 입력창 (기존 답변이 있으면 불러옴)
                         new_ans = st.text_area(f"💬 {row['작성자']}님 보고에 대한 피드백 작성", value=row['답변'], key=f"ans_{i}", height=70)
                         
                         if st.button("답변 저장", key=f"btn_{i}"):
@@ -594,14 +633,11 @@ def main():
                             df_reports.at[original_idx, "답변"] = new_ans
                             save_data("reports", df_reports)
                             st.success(f"✅ {row['작성자']}님에게 답변을 저장했습니다!"); time.sleep(1); st.rerun()
-                        
                         st.divider()
 
         else:
-            # --- 소그룹장 모드 ---
             st.markdown(f"### 📂 {current_user_name}님의 보고서")
             
-            # 1. 새 보고서 작성
             with st.expander("📝 새 보고서 작성하기"):
                 with st.form("report_form"):
                     r_date = st.date_input("작성일", datetime.date.today())
@@ -618,12 +654,10 @@ def main():
             
             st.divider()
             
-            # 2. 내 보고서 목록 (답변 확인)
             my_reports = df_reports[df_reports["작성자"] == current_user_name].copy()
             if my_reports.empty:
                 st.info("제출한 보고서가 없습니다.")
             else:
-                # 최신순 정렬
                 my_reports["날짜_dt"] = pd.to_datetime(my_reports["날짜"], errors='coerce')
                 my_reports = my_reports.sort_values(by="날짜_dt", ascending=False).drop(columns=["날짜_dt"])
                 
@@ -633,8 +667,6 @@ def main():
                         <div class="report-header">🗓️ {row['날짜']} 제출</div>
                         <div class="report-content">{row['내용']}</div>
                     """
-                    
-                    # 답변이 있으면 초록색 박스로 표시
                     if row['답변'] and str(row['답변']).strip() != "":
                         html_content += f"""
                         <div class="reply-box">
@@ -642,13 +674,14 @@ def main():
                             <div>{row['답변']}</div>
                         </div>
                         """
-                    
                     html_content += "</div>"
                     st.markdown(html_content, unsafe_allow_html=True)
 
     # --- 7. 명단 관리 ---
     elif sel_menu == "👥 명단 관리":
         st.subheader("명단 관리")
+        st.markdown('<div class="info-tip">💡 <b>Tip:</b> 연락처, 주소 등이 바뀌었을 때 직접 수정할 수 있습니다. <b>음력 생일</b>인 경우, 음력 칸에 <b>O</b>를 적어주세요.</div>', unsafe_allow_html=True)
+
         if is_admin: target = df_members
         else:
             my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
