@@ -218,8 +218,16 @@ def draw_birthday_calendar(df_members):
                 # 2. 음력 여부 확인
                 is_lunar = False
                 if "음력" in df_members.columns:
-                    if str(row["음력"]).strip().upper() == "O":
-                        is_lunar = True
+                    # '음력' 컬럼이 있는지 확인 (공백 제거 후 확인)
+cols_cleaned = [c.strip() for c in df_members.columns]
+if "음력" in cols_cleaned:
+    # 1. 컬럼 이름이 정확하지 않아도(공백 등) 찾을 수 있게 처리
+    target_col = df_members.columns[cols_cleaned.index("음력")]
+    
+    # 2. 입력값이 알파벳 O, 숫자 0, 한글 ㅇ, Yes 등 무엇이든 OK
+    val = str(row[target_col]).strip().upper()
+    if val in ["O", "0", "ㅇ", "YES", "TRUE", "Y"]:
+        is_lunar = True
 
                 if len(parts) >= 2:
                     # 입력된 생일의 월/일
@@ -642,4 +650,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
