@@ -6,7 +6,8 @@ import time
 import gspread
 import extra_streamlit_components as stx
 from oauth2client.service_account import ServiceAccountCredentials
-import re # [추가] 정규표현식 모듈 (날짜 숫자만 추출하기 위해)
+import re 
+from korean_lunar_calendar import KoreanLunarCalendar # [추가] 음력 변환기
 
 # --- [설정] 구글 시트 파일 이름 ---
 SHEET_NAME = "교회출석데이터"
@@ -59,11 +60,16 @@ st.markdown("""
         font-size: 12px; border-radius: 4px; padding: 2px; margin-top: 4px;
         word-break: keep-all; line-height: 1.2; font-weight: bold;
     }
+    .lunar-badge { /* 음력 생일 표시 스타일 */
+        display: block; background-color: #f3e5f5; color: #7b1fa2;
+        font-size: 12px; border-radius: 4px; padding: 2px; margin-top: 4px;
+        word-break: keep-all; line-height: 1.2; font-weight: bold;
+    }
     @media only screen and (max-width: 600px) {
         h1 { font-size: 28px !important; margin-bottom: 15px !important; }
         .cal-header { font-size: 14px; }
         .cal-cell { min-height: 55px; font-size: 13px; padding: 2px; }
-        .b-badge { font-size: 11px; margin-top: 2px; }
+        .b-badge, .lunar-badge { font-size: 11px; margin-top: 2px; }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -104,8 +110,10 @@ def load_data(sheet_name):
     if not ws: return pd.DataFrame()
     data = ws.get_all_records()
     if not data:
+        # [수정] members 시트에 '음력' 컬럼이 없으면 에러가 날 수 있으므로 기본값에 추가하지 않더라도, 
+        # 실제 시트에 추가되어 있다면 get_all_records가 자동으로 가져옵니다.
         if sheet_name == "members":
-            return pd.DataFrame(columns=["이름", "성별", "생일", "전화번호", "주소", "가족ID", "소그룹", "비고"])
+            return pd.DataFrame(columns=["이름", "성별", "생일", "전화번호", "주소", "가족ID", "소그룹", "비고", "음력"])
         elif sheet_name == "attendance_log":
             return pd.DataFrame(columns=["날짜", "모임명", "이름", "소그룹", "출석여부"])
         elif sheet_name == "users":
@@ -147,20 +155,18 @@ def get_target_columns(weekday_idx, group_name):
     elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name: return COLS_KIDS
     else: return COLS_ADULT
 
-# [추가] 사용설명서
 def draw_manual_tab():
     st.markdown("""
     ### 📘 회정교회 출석체크 시스템 가이드
     
     **1. ⚠️ 주의사항**
     * 작업 중에 **새로고침(F5)**을 하면 로그인이 풀립니다. 저장하기 전에는 주의해주세요.
-    * 아이디/비번은 관리자에게 문의해주세요.
-
+    
     ---
     
     **2. 📋 출석체크 사용법**
-    * **날짜 선택:** 일요일/수요일/금요일을 선택하면 해당되는 모임만 자동으로 나옵니다.
-    * **부서 자동 인식:** 소그룹 이름에 따라(중고등부, 청년부 등) 체크할 항목이 자동으로 바뀝니다.
+    * **날짜 선택:** 요일에 따라 해당되는 모임만 자동으로 나옵니다.
+    * **부서 자동 인식:** 소그룹 이름(중고등부, 청년부 등)에 따라 체크할 항목이 바뀝니다.
     * **틀 고정:** 화면을 옆으로 밀어도 **'이름'**은 왼쪽에 고정됩니다.
     * **저장:** 체크 후 반드시 하단의 **[저장하기]** 버튼을 눌러주세요.
 
@@ -173,11 +179,10 @@ def draw_manual_tab():
     ---
 
     **4. 👥 명단 관리 (소그룹명 규칙)**
-    * 시스템이 부서를 인식하도록 소그룹명에 다음 단어를 포함해주세요.
-    * **중고등부:** `중고등` (예: 중고등부 1반)
-    * **청년부:** `청년` (예: 청년부)
-    * **주일학교:** `주일학교`, `유초등`, `유치부`
-    * **장년:** 위 단어 없음 (예: 1조)
+    * **중고등부:** `중고등` 포함
+    * **청년부:** `청년` 포함
+    * **주일학교:** `주일학교`, `유초등`, `유치부` 포함
+    * **음력 생일:** '음력' 칸에 대문자 `O` 입력
     """)
 
 def draw_notice_section(is_admin, current_user_name):
@@ -198,27 +203,66 @@ def draw_notice_section(is_admin, current_user_name):
                     save_data("notices", pd.concat([df_notices, new_n], ignore_index=True))
                     st.success("등록됨"); st.rerun()
 
-# [수정] 한글 날짜 인식 로직 추가
+# [수정] 음력/양력 통합 생일 달력 로직
 def draw_birthday_calendar(df_members):
     today = datetime.date.today()
     month = today.month
     year = today.year
     birthdays = {}
+    
+    # 음력 변환기 초기화
+    calendar_converter = KoreanLunarCalendar()
+
     if not df_members.empty:
         for _, row in df_members.iterrows():
             try:
+                # 1. 생일 날짜 파싱 (숫자만 추출)
                 raw_birth = str(row["생일"])
-                # 숫자만 모두 추출 (예: 1983년 4월 30일 -> ['1983', '4', '30'])
                 parts = re.findall(r'\d+', raw_birth)
                 
+                # 2. 음력 여부 확인 (컬럼이 없으면 양력으로 처리)
+                is_lunar = False
+                if "음력" in df_members.columns:
+                    if str(row["음력"]).strip().upper() == "O":
+                        is_lunar = True
+
                 if len(parts) >= 2:
-                    # 마지막이 일(day), 그 앞이 월(month)이라고 가정
-                    b_month = int(parts[-2])
-                    b_day = int(parts[-1])
+                    # 입력된 생일의 월/일 (연도는 무시하거나 참고만 함)
+                    b_month_origin = int(parts[-2])
+                    b_day_origin = int(parts[-1])
                     
-                    if b_month == month:
-                        if str(b_day) not in birthdays: birthdays[str(b_day)] = []
-                        birthdays[str(b_day)].append(f"{row['이름']}")
+                    final_month = 0
+                    final_day = 0
+                    
+                    if is_lunar:
+                        # [음력 -> 양력 변환]
+                        # 올해(year)의 음력 b_month/b_day가 양력으로 며칠인지 계산
+                        # (윤달은 일단 평달로 처리 - False)
+                        calendar_converter.setLunarDate(year, b_month_origin, b_day_origin, False)
+                        solar_date = calendar_converter.getSolarIsoFormat() # YYYY-MM-DD
+                        
+                        # 변환된 날짜에서 월/일 추출
+                        s_parts = solar_date.split('-')
+                        final_month = int(s_parts[1])
+                        final_day = int(s_parts[2])
+                        
+                        # 표시 이름에 (음) 표시 추가
+                        display_name = f"{row['이름']}(음)"
+                        badge_class = "lunar-badge" # 보라색 스타일
+                        
+                    else:
+                        # [양력] 그대로 사용
+                        final_month = b_month_origin
+                        final_day = b_day_origin
+                        display_name = f"{row['이름']}"
+                        badge_class = "b-badge" # 파란색 스타일
+
+                    # 3. 이번 달 생일자면 리스트에 추가
+                    if final_month == month:
+                        if str(final_day) not in birthdays: 
+                            birthdays[str(final_day)] = []
+                        birthdays[str(final_day)].append({"name": display_name, "style": badge_class})
+
             except: continue
 
     st.markdown(f"### 📅 {month}월 생일 달력")
@@ -236,8 +280,11 @@ def draw_birthday_calendar(df_members):
                 is_today = "today" if day == today.day else ""
                 style = "color: red;" if day == today.day else ""
                 html_code += f'<div class="cal-cell {is_today}"><div style="{style} font-weight:bold;">{day}</div>'
+                
                 if str(day) in birthdays:
-                    for p in birthdays[str(day)]: html_code += f'<span class="b-badge">🎂{p}</span>'
+                    for person in birthdays[str(day)]:
+                        # 스타일별(음력/양력) 뱃지 적용
+                        html_code += f'<span class="{person["style"]}">🎂{person["name"]}</span>'
                 html_code += '</div>'
     html_code += '</div>'
     st.markdown(html_code, unsafe_allow_html=True)
@@ -368,7 +415,6 @@ def main():
                 
                 df_grid = pd.DataFrame(grid_data)
                 
-                # 틀 고정 (이름만)
                 col_conf = {
                     "이름": st.column_config.TextColumn("이름", disabled=True, pinned=True),
                     "소그룹": st.column_config.TextColumn("소그룹", disabled=True)
