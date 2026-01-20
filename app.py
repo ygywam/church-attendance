@@ -32,7 +32,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v10.0", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v10.1", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -139,7 +139,6 @@ def load_data(sheet_name):
         elif sheet_name == "notices":
             return pd.DataFrame(columns=["날짜", "내용", "작성자"])
         elif sheet_name == "reports":
-            # [수정] 깔끔하게 4개 컬럼만 사용
             return pd.DataFrame(columns=["날짜", "작성자", "내용", "답변"])
     return pd.DataFrame(data).astype(str)
 
@@ -172,7 +171,7 @@ def get_target_columns(weekday_idx, group_name):
     elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name: return COLS_KIDS
     else: return COLS_ADULT
 
-# [음력/양력 완벽 변환 생일 달력 로직 v8.2]
+# [수정] 생일 달력: 이름 옆에 (소그룹) 표기 추가
 def draw_birthday_calendar(df_members):
     today = datetime.date.today()
     month = today.month
@@ -203,6 +202,9 @@ def draw_birthday_calendar(df_members):
                 
                 if b_month_origin == 0 or b_day_origin == 0: continue
 
+                # 소그룹 정보 가져오기
+                group_name = str(row.get("소그룹", "")).strip()
+
                 is_lunar = False
                 if lunar_col_name:
                     val = str(row[lunar_col_name]).strip().upper()
@@ -219,14 +221,16 @@ def draw_birthday_calendar(df_members):
                             s_day = calendar_converter.solarDay
                             
                             if s_year == year and s_month == month:
-                                display_name = f"{row['이름']}(음)"
+                                # [수정] 이름(소그룹)(음) 형식
+                                display_name = f"{row['이름']}({group_name})(음)"
                                 if str(s_day) not in birthdays: birthdays[str(s_day)] = []
                                 if not any(p['name'] == display_name for p in birthdays[str(s_day)]):
                                     birthdays[str(s_day)].append({"name": display_name, "style": "lunar-badge"})
                         except: continue 
                 else:
                     if b_month_origin == month:
-                        display_name = f"{row['이름']}"
+                        # [수정] 이름(소그룹) 형식
+                        display_name = f"{row['이름']}({group_name})"
                         if str(b_day_origin) not in birthdays: birthdays[str(b_day_origin)] = []
                         birthdays[str(b_day_origin)].append({"name": display_name, "style": "b-badge"})
 
@@ -258,7 +262,7 @@ def draw_birthday_calendar(df_members):
 
 def draw_manual_tab():
     st.markdown("""
-    ### 📘 회정교회 출석체크 시스템 가이드 v10.0
+    ### 📘 회정교회 출석체크 시스템 가이드 v10.1
     
     **1. ⚠️ 주의사항**
     * 작업 중에 **새로고침(F5)**을 하면 로그인이 풀립니다.
@@ -314,7 +318,7 @@ def process_logout(cookie_manager):
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
     
-    st.title("⛪ 회정교회 출석체크 시스템 v10.0")
+    st.title("⛪ 회정교회 출석체크 시스템 v10.1")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -583,18 +587,11 @@ def main():
                         """, unsafe_allow_html=True)
                         
                         # 관리자 답변 입력창 (기존 답변이 있으면 불러옴)
-                        # key를 유니크하게 만들기 위해 index 사용
                         new_ans = st.text_area(f"💬 {row['작성자']}님 보고에 대한 피드백 작성", value=row['답변'], key=f"ans_{i}", height=70)
                         
                         if st.button("답변 저장", key=f"btn_{i}"):
-                            # 1. 원본 DataFrame에서 해당 행(row)을 찾아서 '답변' 업데이트
-                            # 여기서는 편의상 전체 데이터를 다시 로드해서 수정하지 않고,
-                            # 현재 로드된 df_reports에서 인덱스를 찾아 수정 후 전체 저장
-                            
-                            # 주의: weekly_reports는 필터링된 뷰이므로, 원본 df_reports의 인덱스를 찾아야 함
-                            original_idx = row.name # 원본 인덱스
+                            original_idx = row.name 
                             df_reports.at[original_idx, "답변"] = new_ans
-                            
                             save_data("reports", df_reports)
                             st.success(f"✅ {row['작성자']}님에게 답변을 저장했습니다!"); time.sleep(1); st.rerun()
                         
