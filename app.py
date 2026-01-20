@@ -153,7 +153,7 @@ def get_target_columns(weekday_idx, group_name):
     elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name: return COLS_KIDS
     else: return COLS_ADULT
 
-# [음력/양력 완벽 변환 생일 달력 로직 v8.1]
+# [진단 키트 내장] 생일 달력 그리기 함수
 def draw_birthday_calendar(df_members):
     today = datetime.date.today()
     month = today.month
@@ -162,73 +162,101 @@ def draw_birthday_calendar(df_members):
     
     calendar_converter = KoreanLunarCalendar()
 
+    # [진단 1] 데이터가 잘 왔나 확인
+    # st.write(f"총 인원: {len(df_members)}명") # (너무 길어질 수 있으니 주석 처리)
+
     if not df_members.empty:
-        # '음력' 컬럼 존재 확인 (공백 제거 후 비교)
+        # '음력' 컬럼 찾기
         cols_cleaned = [str(c).strip() for c in df_members.columns]
         lunar_col_name = None
         if "음력" in cols_cleaned:
             lunar_col_name = df_members.columns[cols_cleaned.index("음력")]
+        else:
+            st.error("⚠️ '음력' 컬럼을 찾지 못했습니다! 스프레드시트 1행에 '음력'이 정확히 있는지 확인하세요.")
 
         for _, row in df_members.iterrows():
             try:
-                # 1. 생일 날짜 파싱 (안전한 로직으로 수정)
+                # -------------------------------------------------------
+                # [진단 키트] 김희동 님 데이터 정밀 분석 (화면에 출력됨)
+                if "김희동" in str(row["이름"]):
+                    st.warning(f"🕵️‍♂️ [진단] {row['이름']}님 데이터 분석 중...")
+                    st.write(f"- 입력된 생일: {row['생일']}")
+                    
+                    if lunar_col_name:
+                        st.write(f"- 음력 컬럼 값: '{row[lunar_col_name]}'")
+                    else:
+                        st.error("- 음력 컬럼 자체를 못 찾음")
+                # -------------------------------------------------------
+
+                # 1. 생일 날짜 숫자만 추출
                 raw_birth = str(row["생일"])
                 parts = re.findall(r'\d+', raw_birth)
                 
                 b_month_origin = 0
                 b_day_origin = 0
 
-                # YYYY.MM.DD 또는 YYYY-MM-DD (길이 3)
                 if len(parts) >= 3:
                     b_month_origin = int(parts[1])
                     b_day_origin = int(parts[2])
-                # MM.DD (길이 2)
                 elif len(parts) == 2:
                     b_month_origin = int(parts[0])
                     b_day_origin = int(parts[1])
                 
-                if b_month_origin == 0 or b_day_origin == 0:
-                    continue
+                if b_month_origin == 0 or b_day_origin == 0: continue
 
-                # 2. 음력 여부 확인 (강력한 체크)
+                # 2. 음력 여부 확인
                 is_lunar = False
                 if lunar_col_name:
                     val = str(row[lunar_col_name]).strip().upper()
-                    # 알파벳 O, 숫자 0, 한글 ㅇ 등 모두 허용
                     if val in ["O", "0", "ㅇ", "YES", "TRUE", "Y"]:
                         is_lunar = True
 
+                # [진단 키트] 김희동 님 음력 인식 결과
+                if "김희동" in str(row["이름"]):
+                    st.write(f"- 음력 인식 결과: {'음력O' if is_lunar else '양력X'}")
+                    st.write(f"- 추출된 월/일: {b_month_origin}월 {b_day_origin}일")
+
                 if is_lunar:
                     # [음력 -> 양력 변환]
-                    # 작년(-1), 올해(0), 내년(+1)의 음력 날짜를 모두 양력으로 변환
                     check_years = [year - 1, year, year + 1]
-                    
                     for check_year in check_years:
                         try:
                             calendar_converter.setLunarDate(check_year, b_month_origin, b_day_origin, False)
-                            solar_date = calendar_converter.getSolarIsoFormat() # YYYY-MM-DD
+                            solar_date = calendar_converter.getSolarIsoFormat()
                             s_parts = solar_date.split('-')
                             s_year = int(s_parts[0])
                             s_month = int(s_parts[1])
                             s_day = int(s_parts[2])
-                            
-                            # 변환된 양력 날짜가 '현재 표시 중인 연도와 월'과 일치하는지 확인
+
+                            # [진단 키트] 변환 과정 출력
+                            if "김희동" in str(row["이름"]):
+                                st.write(f"  👉 (계산시도) {check_year}년 음력 {b_month_origin}.{b_day_origin} → 양력 {solar_date}")
+
+                            # 이번 달(month)과 일치하는지 확인
                             if s_year == year and s_month == month:
                                 display_name = f"{row['이름']}(음)"
                                 if str(s_day) not in birthdays: birthdays[str(s_day)] = []
-                                # 중복 방지
                                 if not any(p['name'] == display_name for p in birthdays[str(s_day)]):
                                     birthdays[str(s_day)].append({"name": display_name, "style": "lunar-badge"})
-                        except:
+                                
+                                # [진단 키트] 성공 메시지
+                                if "김희동" in str(row["이름"]):
+                                    st.success(f"  🎉 매칭 성공! {s_day}일에 표시합니다.")
+
+                        except Exception as e:
+                            if "김희동" in str(row["이름"]): st.error(f"변환 에러: {e}")
                             continue 
                 else:
-                    # [양력] 그대로 사용
+                    # [양력]
                     if b_month_origin == month:
                         display_name = f"{row['이름']}"
                         if str(b_day_origin) not in birthdays: birthdays[str(b_day_origin)] = []
                         birthdays[str(b_day_origin)].append({"name": display_name, "style": "b-badge"})
 
-            except: continue
+            except Exception as e:
+                # [진단 키트] 치명적 에러 확인
+                if "김희동" in str(row["이름"]): st.error(f"❌ 처리 중 치명적 오류: {e}")
+                continue
 
     st.markdown(f"### 📅 {year}년 {month}월 생일 달력")
     html_code = '<div class="calendar-container">'
@@ -237,7 +265,6 @@ def draw_birthday_calendar(df_members):
         color = "red" if i==0 else "blue" if i==6 else "#333"
         html_code += f'<div class="cal-header" style="color: {color};">{w}</div>'
     
-    # 달력 시작 요일을 일요일(6)로 설정
     calendar.setfirstweekday(6) 
     cal = calendar.monthcalendar(year, month)
     
@@ -247,9 +274,7 @@ def draw_birthday_calendar(df_members):
             else:
                 is_today = "today" if (day == today.day and month == today.month and year == today.year) else ""
                 style = "color: red;" if (day == today.day and month == today.month and year == today.year) else ""
-                
                 html_code += f'<div class="cal-cell {is_today}"><div style="{style} font-weight:bold;">{day}</div>'
-                
                 if str(day) in birthdays:
                     for person in birthdays[str(day)]:
                         html_code += f'<span class="{person["style"]}">🎂{person["name"]}</span>'
@@ -653,3 +678,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
