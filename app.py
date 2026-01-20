@@ -32,7 +32,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v8.1", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -153,7 +153,7 @@ def get_target_columns(weekday_idx, group_name):
     elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name: return COLS_KIDS
     else: return COLS_ADULT
 
-# [핵심 수정] 음력/양력 완벽 변환 생일 달력 로직
+# [음력/양력 완벽 변환 생일 달력 로직 v8.1]
 def draw_birthday_calendar(df_members):
     today = datetime.date.today()
     month = today.month
@@ -163,62 +163,70 @@ def draw_birthday_calendar(df_members):
     calendar_converter = KoreanLunarCalendar()
 
     if not df_members.empty:
-        # '음력' 컬럼이 실제로 있는지 확인 (공백 제거 후 비교)
+        # '음력' 컬럼 존재 확인 (공백 제거 후 비교)
         cols_cleaned = [str(c).strip() for c in df_members.columns]
         lunar_col_name = None
         if "음력" in cols_cleaned:
-            # 실제 컬럼명 찾기
             lunar_col_name = df_members.columns[cols_cleaned.index("음력")]
 
         for _, row in df_members.iterrows():
             try:
-                # 1. 생일 날짜 파싱 (숫자만 추출)
+                # 1. 생일 날짜 파싱 (안전한 로직으로 수정)
                 raw_birth = str(row["생일"])
                 parts = re.findall(r'\d+', raw_birth)
                 
+                b_month_origin = 0
+                b_day_origin = 0
+
+                # YYYY.MM.DD 또는 YYYY-MM-DD (길이 3)
+                if len(parts) >= 3:
+                    b_month_origin = int(parts[1])
+                    b_day_origin = int(parts[2])
+                # MM.DD (길이 2)
+                elif len(parts) == 2:
+                    b_month_origin = int(parts[0])
+                    b_day_origin = int(parts[1])
+                
+                if b_month_origin == 0 or b_day_origin == 0:
+                    continue
+
                 # 2. 음력 여부 확인 (강력한 체크)
                 is_lunar = False
                 if lunar_col_name:
                     val = str(row[lunar_col_name]).strip().upper()
-                    # 알파벳 O, 숫자 0, 한글 ㅇ, YES 등 모두 허용
+                    # 알파벳 O, 숫자 0, 한글 ㅇ 등 모두 허용
                     if val in ["O", "0", "ㅇ", "YES", "TRUE", "Y"]:
                         is_lunar = True
 
-                if len(parts) >= 2:
-                    b_month_origin = int(parts[-2])
-                    b_day_origin = int(parts[-1])
+                if is_lunar:
+                    # [음력 -> 양력 변환]
+                    # 작년(-1), 올해(0), 내년(+1)의 음력 날짜를 모두 양력으로 변환
+                    check_years = [year - 1, year, year + 1]
                     
-                    if is_lunar:
-                        # [음력 -> 양력 변환]
-                        # 작년(-1), 올해(0), 내년(+1)의 음력 날짜를 모두 양력으로 변환해보고
-                        # 결과가 '이번 달(month)'과 일치하는지 확인
-                        check_years = [year - 1, year, year + 1]
-                        
-                        for check_year in check_years:
-                            try:
-                                calendar_converter.setLunarDate(check_year, b_month_origin, b_day_origin, False)
-                                solar_date = calendar_converter.getSolarIsoFormat() # YYYY-MM-DD
-                                s_parts = solar_date.split('-')
-                                s_year = int(s_parts[0])
-                                s_month = int(s_parts[1])
-                                s_day = int(s_parts[2])
-                                
-                                # 변환된 양력 날짜가 '현재 표시 중인 연도와 월'과 일치하는지 확인
-                                if s_year == year and s_month == month:
-                                    display_name = f"{row['이름']}(음)"
-                                    if str(s_day) not in birthdays: birthdays[str(s_day)] = []
-                                    # 중복 방지: 이미 같은 이름이 있으면 추가 안 함
-                                    if not any(p['name'] == display_name for p in birthdays[str(s_day)]):
-                                        birthdays[str(s_day)].append({"name": display_name, "style": "lunar-badge"})
-                            except:
-                                continue 
-
-                    else:
-                        # [양력] 그대로 사용
-                        if b_month_origin == month:
-                            display_name = f"{row['이름']}"
-                            if str(b_day_origin) not in birthdays: birthdays[str(b_day_origin)] = []
-                            birthdays[str(b_day_origin)].append({"name": display_name, "style": "b-badge"})
+                    for check_year in check_years:
+                        try:
+                            calendar_converter.setLunarDate(check_year, b_month_origin, b_day_origin, False)
+                            solar_date = calendar_converter.getSolarIsoFormat() # YYYY-MM-DD
+                            s_parts = solar_date.split('-')
+                            s_year = int(s_parts[0])
+                            s_month = int(s_parts[1])
+                            s_day = int(s_parts[2])
+                            
+                            # 변환된 양력 날짜가 '현재 표시 중인 연도와 월'과 일치하는지 확인
+                            if s_year == year and s_month == month:
+                                display_name = f"{row['이름']}(음)"
+                                if str(s_day) not in birthdays: birthdays[str(s_day)] = []
+                                # 중복 방지
+                                if not any(p['name'] == display_name for p in birthdays[str(s_day)]):
+                                    birthdays[str(s_day)].append({"name": display_name, "style": "lunar-badge"})
+                        except:
+                            continue 
+                else:
+                    # [양력] 그대로 사용
+                    if b_month_origin == month:
+                        display_name = f"{row['이름']}"
+                        if str(b_day_origin) not in birthdays: birthdays[str(b_day_origin)] = []
+                        birthdays[str(b_day_origin)].append({"name": display_name, "style": "b-badge"})
 
             except: continue
 
@@ -251,7 +259,7 @@ def draw_birthday_calendar(df_members):
 
 def draw_manual_tab():
     st.markdown("""
-    ### 📘 회정교회 출석체크 시스템 가이드
+    ### 📘 회정교회 출석체크 시스템 가이드 v8.1
     
     **1. ⚠️ 주의사항**
     * 작업 중에 **새로고침(F5)**을 하면 로그인이 풀립니다. 저장하기 전에는 주의해주세요.
@@ -318,7 +326,7 @@ def process_logout(cookie_manager):
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
     
-    st.title("⛪ 회정교회 출석체크 시스템")
+    st.title("⛪ 회정교회 출석체크 시스템 v8.1")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -371,6 +379,10 @@ def main():
     if sel_menu == "🏠 홈":
         draw_notice_section(is_admin, current_user_name)
         st.subheader("이번 달 주요 일정")
+        # [데이터 리로드 버튼 추가]
+        if st.button("🔄 일정 새로고침 (데이터가 안 보이면 누르세요)"):
+            st.cache_data.clear()
+            st.rerun()
         draw_birthday_calendar(df_members)
 
     # --- 2. 사용설명서 ---
