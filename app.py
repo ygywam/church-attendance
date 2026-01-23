@@ -387,11 +387,23 @@ def process_login(username, password, cookie_manager):
         st.rerun()
     else: st.error("정보 불일치")
 
+# [수정] 로그아웃 로직: 쿠키 삭제 시간을 벌어주기 위해 대기 시간 추가
 def process_logout(cookie_manager):
+    # 1. 세션 상태 초기화
     st.session_state["logged_in"] = False
     st.session_state["user_info"] = None
-    try: cookie_manager.delete("church_user_id")
-    except: pass
+    
+    # 2. 쿠키 삭제 명령
+    try:
+        cookie_manager.delete("church_user_id")
+    except:
+        pass
+    
+    # 3. [핵심] 브라우저가 쿠키를 지울 시간을 줌 (1초 대기)
+    with st.spinner("로그아웃 중입니다..."):
+        time.sleep(1)
+        
+    # 4. 새로고침
     st.rerun()
 
 # --- 4. 메인 앱 ---
@@ -769,3 +781,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
