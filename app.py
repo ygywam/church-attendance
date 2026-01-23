@@ -32,7 +32,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v2.1", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v2.2", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -177,12 +177,43 @@ def get_target_columns(weekday_idx, group_name):
     elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name: return COLS_KIDS
     else: return COLS_ADULT
 
+# [수정] 달력 월 이동 기능 추가 (v2.2)
 def draw_birthday_calendar(df_members):
-    today = datetime.date.today()
-    month = today.month
-    year = today.year
-    birthdays = {}
+    # 1. 현재 보여줄 년/월을 세션 상태에서 관리
+    real_today = datetime.date.today()
     
+    if "cal_year" not in st.session_state:
+        st.session_state["cal_year"] = real_today.year
+    if "cal_month" not in st.session_state:
+        st.session_state["cal_month"] = real_today.month
+
+    # 2. 네비게이션 버튼 (이전 달 / 다음 달)
+    c_prev, c_title, c_next = st.columns([1, 4, 1])
+    
+    with c_prev:
+        if st.button("◀ 이전"):
+            st.session_state["cal_month"] -= 1
+            if st.session_state["cal_month"] == 0:
+                st.session_state["cal_month"] = 12
+                st.session_state["cal_year"] -= 1
+            st.rerun()
+            
+    with c_title:
+        st.markdown(f"<h3 style='text-align: center; margin: 0;'>{st.session_state['cal_year']}년 {st.session_state['cal_month']}월</h3>", unsafe_allow_html=True)
+        
+    with c_next:
+        if st.button("다음 ▶"):
+            st.session_state["cal_month"] += 1
+            if st.session_state["cal_month"] == 13:
+                st.session_state["cal_month"] = 1
+                st.session_state["cal_year"] += 1
+            st.rerun()
+
+    # 3. 달력 로직은 선택된 년(year), 월(month)을 기준으로 계산
+    year = st.session_state["cal_year"]
+    month = st.session_state["cal_month"]
+    
+    birthdays = {}
     calendar_converter = KoreanLunarCalendar()
 
     if not df_members.empty:
@@ -216,6 +247,7 @@ def draw_birthday_calendar(df_members):
                         is_lunar = True
 
                 if is_lunar:
+                    # 선택된 year 기준으로 음력 변환
                     check_years = [year - 1, year, year + 1]
                     for check_year in check_years:
                         try:
@@ -238,7 +270,7 @@ def draw_birthday_calendar(df_members):
 
             except: continue
 
-    st.markdown(f"### 📅 {year}년 {month}월 생일 달력")
+    # st.markdown(f"### 📅 {year}년 {month}월 생일 달력") # 제목은 위 버튼 사이에 넣었으므로 제거
     html_code = '<div class="calendar-container">'
     weeks = ["일", "월", "화", "수", "목", "금", "토"]
     for i, w in enumerate(weeks):
@@ -252,8 +284,9 @@ def draw_birthday_calendar(df_members):
         for day in week:
             if day == 0: html_code += '<div class="cal-cell" style="border:none;"></div>'
             else:
-                is_today = "today" if (day == today.day and month == today.month and year == today.year) else ""
-                style = "color: red;" if (day == today.day and month == today.month and year == today.year) else ""
+                # 오늘 날짜 표시는 "실제 오늘"과 연/월/일이 모두 같을 때만
+                is_today = "today" if (day == real_today.day and month == real_today.month and year == real_today.year) else ""
+                style = "color: red;" if (day == real_today.day and month == real_today.month and year == real_today.year) else ""
                 html_code += f'<div class="cal-cell {is_today}"><div style="{style} font-weight:bold;">{day}</div>'
                 if str(day) in birthdays:
                     for person in birthdays[str(day)]:
@@ -265,7 +298,7 @@ def draw_birthday_calendar(df_members):
 # [수정] 상세하고 친절한 사용설명서 함수
 def draw_manual_tab():
     st.markdown("""
-    ## 📘 회정교회 출석체크 시스템 사용법 (v2.1)
+    ## 📘 회정교회 출석체크 시스템 사용법 (v2.2)
     
     환영합니다! 이 시스템은 소그룹 리더님들이 스마트폰으로 간편하게 사역을 관리하실 수 있도록 만들어졌습니다.
     처음 사용하셔도 괜찮아요. 아래 설명대로 천천히 따라해보세요. 😊
@@ -307,7 +340,8 @@ def draw_manual_tab():
 
     with st.expander("🎂 4. 생일 및 명단 관리"):
         st.markdown("""
-        * **생일 달력:** **[🏠 홈]** 화면에 이번 달 생일자가 모두 표시됩니다. (음력 생일도 자동 변환되어 나와요!)
+        * **생일 달력:** **[🏠 홈]** 화면에서 이번 달 생일자를 확인하세요. 
+           * **[◀ 이전] [다음 ▶]** 버튼을 눌러 지난달이나 다음 달 생일자도 미리 볼 수 있습니다.
         * **명단 수정:** **[👥 명단 관리]** 메뉴에서 전화번호나 주소가 바뀌었을 때 직접 수정하고 저장할 수 있습니다.
         * **음력 생일 등록:** 명단 관리에서 **'음력'** 칸에 알파벳 **O**를 입력하면, 자동으로 양력으로 변환되어 달력에 표시됩니다.
         """)
@@ -355,7 +389,7 @@ def process_logout(cookie_manager):
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
     
-    st.title("⛪ 회정교회 출석체크 시스템 v2.1")
+    st.title("⛪ 회정교회 출석체크 시스템 v2.2")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -405,12 +439,10 @@ def main():
 
     # --- 1. 홈 ---
     if sel_menu == "🏠 홈":
-        st.markdown('<div class="info-tip">👋 환영합니다! 공지사항과 이번 달 생일자를 확인해보세요.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="info-tip">👋 환영합니다! 공지사항과 생일자를 확인해보세요.</div>', unsafe_allow_html=True)
         draw_notice_section(is_admin, current_user_name)
-        st.subheader("이번 달 주요 일정")
-        if st.button("🔄 일정 새로고침"):
-            st.cache_data.clear()
-            st.rerun()
+        st.subheader("생일 캘린더")
+        # 달력 이동은 함수 내부에서 처리하므로 바로 호출
         draw_birthday_calendar(df_members)
 
     # --- 2. 사용설명서 ---
