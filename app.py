@@ -6,7 +6,7 @@ import time
 import gspread
 import extra_streamlit_components as stx
 from oauth2client.service_account import ServiceAccountCredentials
-# import re (삭제됨 - 아이폰 오류 방지)
+# import re (삭제됨)
 from korean_lunar_calendar import KoreanLunarCalendar
 
 # --- [설정] 구글 시트 파일 이름 ---
@@ -32,7 +32,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v2.4", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v2.5", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -131,7 +131,6 @@ def load_data(sheet_name):
     data = ws.get_all_records()
     if not data:
         if sheet_name == "members":
-            # [수정] 순서 반영: 생일 옆에 음력
             return pd.DataFrame(columns=["이름", "성별", "생일", "음력", "전화번호", "주소", "가족ID", "소그룹", "비고"])
         elif sheet_name == "attendance_log":
             return pd.DataFrame(columns=["날짜", "모임명", "이름", "소그룹", "출석여부"])
@@ -284,7 +283,7 @@ def draw_birthday_calendar(df_members):
 
 def draw_manual_tab():
     st.markdown("""
-    ## 📘 회정교회 출석체크 시스템 사용법 (v2.4)
+    ## 📘 회정교회 출석체크 시스템 사용법 (v2.5)
     ---
     """)
     with st.expander("✅ 1. 출석체크 하는 법"):
@@ -364,7 +363,7 @@ def process_logout(cookie_manager):
 # --- 4. 메인 앱 ---
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
-    st.title("⛪ 회정교회 출석체크 시스템 v2.4")
+    st.title("⛪ 회정교회 출석체크 시스템 v2.5")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -666,14 +665,29 @@ def main():
 
     elif sel_menu == "👥 명단 관리":
         st.subheader("명단 관리")
-        st.markdown('<div class="info-tip">💡 <b>Tip:</b> 연락처, 주소 등이 바뀌었을 때 직접 수정할 수 있습니다. <b>음력 생일</b>인 경우, 음력 칸에 <b>O</b>를 적어주세요.</div>', unsafe_allow_html=True)
+        
+        # [수정] 가족ID 자동 계산 로직 (v2.5)
+        try:
+            # 가족ID 컬럼을 숫자로 변환 (오류나 빈칸은 0으로 처리)
+            fam_ids = pd.to_numeric(df_members["가족ID"], errors='coerce').fillna(0)
+            next_fam_id = int(fam_ids.max()) + 1
+        except:
+            next_fam_id = 1
+            
+        # [수정] 안내 메시지 박스
+        c1, c2 = st.columns(2)
+        c1.metric("총 인원", f"{len(df_members)}명")
+        c2.metric("새 가족 등록 시 추천 ID", f"{next_fam_id}번")
+        
+        st.caption("※ 맨 앞의 숫자는 '행 번호'로 자동 생성됩니다. 신경 쓰지 않으셔도 됩니다.")
+        st.caption(f"※ 기존 가족이 있는 경우, 해당 가족의 **가족ID**를 확인하여 똑같이 입력해주세요.")
+        
         if is_admin: target = df_members
         else:
             my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
             target = df_members[df_members["소그룹"].isin(my_gs)]
             st.info(f"담당: {', '.join(my_gs)}")
         
-        # [수정] 정렬 옵션 추가 (v2.4)
         sort_option = st.radio("정렬 기준 선택", ["👨‍👩‍👧‍👦 가족끼리(기본)", "🔤 이름순", "🏘️ 소그룹순", "🎂 생일순(월일)", "👵 연령순(나이)"], horizontal=True)
         
         if not target.empty:
@@ -685,18 +699,15 @@ def main():
             elif sort_option == "🔤 이름순": target = target.sort_values(by="이름")
             elif sort_option == "🏘️ 소그룹순": target = target.sort_values(by=["소그룹", "이름"])
             elif sort_option == "🎂 생일순(월일)":
-                # [수정] 연도 무시하고 월/일로만 정렬 (안전 파싱 사용)
                 def get_mmdd(date_str):
                     nums = extract_date_numbers(date_str)
                     if len(nums) >= 3: return nums[1] * 100 + nums[2]
                     elif len(nums) == 2: return nums[0] * 100 + nums[1]
-                    return 9999 # 날짜 없으면 맨 뒤로
-                
+                    return 9999 
                 target["temp_sort"] = target["생일"].apply(get_mmdd)
                 target = target.sort_values(by="temp_sort")
                 del target["temp_sort"]
-                
-            elif sort_option == "👵 연령순(나이)": target = target.sort_values(by="생일") # 연도 포함 정렬
+            elif sort_option == "👵 연령순(나이)": target = target.sort_values(by="생일")
 
         col_conf_mem = {"이름": st.column_config.TextColumn(pinned=True)}
         edited = st.data_editor(target, num_rows="dynamic", use_container_width=True, column_config=col_conf_mem)
