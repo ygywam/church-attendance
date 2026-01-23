@@ -132,7 +132,7 @@ def load_data(sheet_name):
     data = ws.get_all_records()
     if not data:
         if sheet_name == "members":
-            return pd.DataFrame(columns=["이름", "성별", "생일", "전화번호", "주소", "가족ID", "소그룹", "비고", "음력"])
+            return pd.DataFrame(columns=["이름", "성별", "생일", "음력", "전화번호", "주소", "가족ID", "소그룹", "비고"])
         elif sheet_name == "attendance_log":
             return pd.DataFrame(columns=["날짜", "모임명", "이름", "소그룹", "출석여부"])
         elif sheet_name == "users":
@@ -713,3 +713,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
