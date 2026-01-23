@@ -6,7 +6,6 @@ import time
 import gspread
 import extra_streamlit_components as stx
 from oauth2client.service_account import ServiceAccountCredentials
-# import re (삭제됨)
 from korean_lunar_calendar import KoreanLunarCalendar
 
 # --- [설정] 구글 시트 파일 이름 ---
@@ -32,7 +31,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v2.5", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v2.6", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -85,6 +84,12 @@ st.markdown("""
         padding: 15px; margin-bottom: 20px; border-radius: 5px; color: #0d47a1;
         font-size: 16px;
     }
+    /* 개발 로그 스타일 */
+    .log-entry {
+        border-left: 3px solid #ccc; padding-left: 15px; margin-bottom: 20px;
+    }
+    .log-ver { font-weight: bold; font-size: 1.1em; color: #333; }
+    .log-date { color: #888; font-size: 0.9em; margin-left: 10px; }
     @media only screen and (max-width: 600px) {
         h1 { font-size: 28px !important; margin-bottom: 15px !important; }
         .cal-header { font-size: 14px; }
@@ -281,24 +286,47 @@ def draw_birthday_calendar(df_members):
     html_code += '</div>'
     st.markdown(html_code, unsafe_allow_html=True)
 
+# [NEW] 개발 로그 그리기
+def draw_changelog():
+    st.subheader("🛠️ 개발 및 업데이트 로그")
+    st.info("이 시스템이 발전해 온 기록입니다.")
+
+    logs = [
+        ("v2.6", "2026-01-24", "출석체크 스마트 정렬 & 개발 로그 추가", 
+         "- 출석 기록이 있는 '활동 성도'와 없는 '장기 결석'을 자동 분류하여 정렬\n- 이름 옆에 상태 아이콘(🟢 활동 / ⚪ 장기결석) 추가\n- 업데이트 내역을 확인하는 '개발 로그' 탭 신설"),
+        ("v2.5", "2026-01-24", "명단 관리 편의성 개선", 
+         "- 새 가족 등록 시, '다음 추천 가족ID' 자동 계산 및 안내 기능 추가\n- 불필요한 입력 혼선 방지를 위한 안내 문구 강화"),
+        ("v2.4", "2026-01-24", "정렬 기능 고도화", 
+         "- 명단 관리에서 '생일순(월일)'과 '연령순(나이)' 정렬을 명확히 분리\n- 다가오는 생일자를 더 쉽게 찾을 수 있도록 개선"),
+        ("v2.3", "2026-01-24", "셀프 회원가입 도입", 
+         "- 관리자가 이름만 등록해두면, 소그룹장이 직접 아이디/비번 생성 가능\n- 중복 가입 방지 및 계정 분실 시 재설정 프로세스 정립"),
+        ("v2.2.1", "2026-01-24", "아이폰/사파리 호환성 해결", 
+         "- 구형 모바일 브라우저에서 생일 날짜 처리 시 발생하던 정규표현식 오류 수정\n- 안전한 날짜 파싱 로직 적용"),
+        ("v2.2", "2026-01-24", "생일 달력 네비게이션", 
+         "- 이번 달뿐만 아니라 이전 달, 다음 달 생일자도 확인 가능하도록 이동 버튼 추가"),
+        ("v2.1", "2026-01-24", "사용자 친화적 가이드(Onboarding)", 
+         "- 각 메뉴마다 '친절한 팁(Tip Box)' 추가\n- 상세 사용설명서 탭 디자인 개선"),
+        ("v2.0", "2026-01-24", "음력 생일 완벽 지원", 
+         "- 한국형 음력 캘린더 라이브러리 탑재\n- 'O' 표시만으로 매년 달라지는 음력 생일을 자동 계산하여 양력 달력에 표시"),
+    ]
+
+    for ver, date, title, desc in logs:
+        st.markdown(f"""
+        <div class="log-entry">
+            <span class="log-ver">{ver}</span> <span class="log-date">{date}</span>
+            <div style="font-weight: bold; margin-top: 5px;">{title}</div>
+            <div style="white-space: pre-wrap; font-size: 0.95em; color: #555; margin-top: 5px;">{desc}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
 def draw_manual_tab():
-    st.markdown("""
-    ## 📘 회정교회 출석체크 시스템 사용법 (v2.5)
-    ---
-    """)
+    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v2.6)")
     with st.expander("✅ 1. 출석체크 하는 법"):
-        st.markdown("""
-        1. **[📋 출석체크]** 메뉴 선택.
-        2. 날짜 확인 후 해당되는 모임 출석 체크.
-        3. 하단 **[✅ 출석 저장하기]** 버튼 클릭 필수.
-        """)
-    with st.expander("📊 2. 지난 출석 확인 및 수정"):
-        st.markdown("1. **[📊 통계]** 메뉴에서 기간 설정 후 조회.\n2. 하단 수정 메뉴에서 개인별 기록 수정 가능.")
-    with st.expander("📨 3. 사역 보고서"):
-        st.markdown("1. **[📨 사역 보고]** 메뉴에서 새 보고서 작성.\n2. 목사님의 답변(피드백) 확인 가능.")
-    with st.expander("🎂 4. 생일 및 명단"):
-        st.markdown("1. **[🏠 홈]**에서 생일 달력 확인 (이전/다음 달 이동 가능).\n2. **[👥 명단 관리]**에서 정보 수정 및 음력 생일(O) 표시.")
-    st.info("💡 처음 오신 소그룹장님은 사이드바의 **[✨ 계정 생성]** 메뉴에서 아이디를 등록해주세요.")
+        st.markdown("1. **[📋 출석체크]** 메뉴 선택.\n2. 상단 정렬 옵션에서 **'🌱 출석유무순'**을 쓰면 활동 성도가 위로 올라와 편합니다.\n3. 체크 후 **[✅ 출석 저장하기]** 필수.")
+    with st.expander("📊 2. 통계 및 보고서"):
+        st.markdown("1. **[📊 통계]**에서 기간별 출석 현황 확인.\n2. **[📨 사역 보고]**에서 목사님과 소통.")
+    with st.expander("🎂 3. 생일 및 명단"):
+        st.markdown("1. **[🏠 홈]**에서 생일 달력 확인 (음력 자동 변환).\n2. **[👥 명단 관리]**에서 정보 수정 및 가족ID 확인.")
 
 def draw_notice_section(is_admin, current_user_name):
     df_notices = load_data("notices")
@@ -330,40 +358,29 @@ def process_login(username, password, cookie_manager):
 def process_signup(reg_name, reg_id, reg_pw):
     ws = get_worksheet("users")
     if not ws: return
-    
-    try:
-        cell = ws.find(reg_name) 
+    try: cell = ws.find(reg_name) 
     except gspread.exceptions.CellNotFound:
-        st.error(f"❌ '{reg_name}'님은 명단에 없습니다. 관리자에게 문의해주세요.")
-        return
-
+        st.error(f"❌ '{reg_name}'님은 명단에 없습니다. 관리자에게 문의해주세요."); return
     row_num = cell.row
     existing_id = ws.cell(row_num, 1).value 
-    
     if existing_id and str(existing_id).strip() != "":
-        st.error("❌ 이미 등록된 계정이 있습니다. 분실 시 관리자에게 초기화를 요청하세요.")
-        return
-
-    ws.update_cell(row_num, 1, reg_id) 
-    ws.update_cell(row_num, 2, reg_pw) 
-    
+        st.error("❌ 이미 등록된 계정이 있습니다. 분실 시 관리자에게 초기화를 요청하세요."); return
+    ws.update_cell(row_num, 1, reg_id); ws.update_cell(row_num, 2, reg_pw) 
     load_data.clear()
-    st.success(f"✅ 환영합니다, {reg_name}님! 계정이 생성되었습니다.")
-    st.info("이제 [🔑 로그인] 메뉴로 이동하여 로그인해주세요.")
+    st.success(f"✅ 환영합니다, {reg_name}님! 계정이 생성되었습니다."); st.info("이제 [🔑 로그인] 메뉴로 이동하여 로그인해주세요.")
 
 def process_logout(cookie_manager):
     st.session_state["logged_in"] = False
     st.session_state["user_info"] = None
     try: cookie_manager.delete("church_user_id")
     except: pass
-    with st.spinner("로그아웃 중입니다..."):
-        time.sleep(1)
+    with st.spinner("로그아웃 중입니다..."): time.sleep(1)
     st.rerun()
 
 # --- 4. 메인 앱 ---
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
-    st.title("⛪ 회정교회 출석체크 시스템 v2.5")
+    st.title("⛪ 회정교회 출석체크 시스템 v2.6")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -384,13 +401,11 @@ def main():
         if not st.session_state["logged_in"]:
             mode = st.radio("접속 모드", ["🔑 로그인", "✨ 계정 생성"], index=0)
             st.divider()
-            
             if mode == "🔑 로그인":
                 st.header("로그인")
                 uid = st.text_input("아이디", key="lid")
                 upw = st.text_input("비밀번호", type="password", key="lpw")
-                if st.button("로그인", use_container_width=True): 
-                    process_login(uid, upw, cookie_manager)
+                if st.button("로그인", use_container_width=True): process_login(uid, upw, cookie_manager)
             else:
                 st.header("계정 생성 (최초 1회)")
                 st.caption("관리자가 등록한 이름이 있어야 가입 가능합니다.")
@@ -398,21 +413,15 @@ def main():
                 reg_id = st.text_input("사용할 아이디")
                 reg_pw = st.text_input("사용할 비밀번호", type="password")
                 reg_pw_chk = st.text_input("비밀번호 확인", type="password")
-                
                 if st.button("가입하기", use_container_width=True):
-                    if not reg_name or not reg_id or not reg_pw:
-                        st.warning("모든 정보를 입력해주세요.")
-                    elif reg_pw != reg_pw_chk:
-                        st.error("비밀번호가 일치하지 않습니다.")
-                    else:
-                        process_signup(reg_name, reg_id, reg_pw)
-
+                    if not reg_name or not reg_id or not reg_pw: st.warning("모든 정보를 입력해주세요.")
+                    elif reg_pw != reg_pw_chk: st.error("비밀번호가 일치하지 않습니다.")
+                    else: process_signup(reg_name, reg_id, reg_pw)
         else:
             u = st.session_state["user_info"]
             st.success(f"👤 {u['이름']}님 환영합니다")
             st.caption(f"권한: {u['역할']}")
-            if st.button("로그아웃", use_container_width=True): 
-                process_logout(cookie_manager)
+            if st.button("로그아웃", use_container_width=True): process_logout(cookie_manager)
 
     if not st.session_state["logged_in"]:
         st.info("👈 왼쪽 사이드바에서 로그인하거나 계정을 생성해주세요.")
@@ -427,8 +436,8 @@ def main():
     df_prayer = load_data("prayer_log")
     df_reports = load_data("reports")
 
-    menu = ["🏠 홈", "📖 사용설명서", "📋 출석체크", "📊 통계", "🙏 기도제목", "📨 사역 보고", "👥 명단 관리"]
-    if is_admin: menu.append("🔐 계정 관리")
+    menu = ["🏠 홈", "📖 사용설명서", "📋 출석체크", "📊 통계", "🙏 기도제목", "📨 사역 보고", "👥 명단 관리", "🛠️ 개발 로그"]
+    if is_admin: menu.insert(7, "🔐 계정 관리")
     
     sel_menu = st.radio("메뉴", menu, horizontal=True, label_visibility="collapsed")
     st.divider()
@@ -445,7 +454,6 @@ def main():
 
     elif sel_menu == "📋 출석체크":
         st.subheader("📋 요일별 맞춤 출석체크")
-        st.markdown('<div class="info-tip">💡 <b>Tip:</b> 날짜를 선택하면 해당 요일의 모임이 자동으로 뜹니다. 체크 후 반드시 하단 <b>[저장하기]</b>를 눌러주세요.</div>', unsafe_allow_html=True)
         
         c1, c2 = st.columns(2)
         chk_date = c1.date_input("날짜 선택", datetime.date.today())
@@ -472,18 +480,48 @@ def main():
             else: targets = pd.DataFrame()
 
             if not targets.empty:
+                # [v2.6 기능] 스마트 정렬 로직 (출석 기록 확인)
+                # 1. 전체 출석 로그에서 이름 목록 추출
+                active_members = set(df_att["이름"].unique())
+                
+                # 2. targets에 '활동상태' 컬럼 추가 (🟢 / ⚪)
+                targets = targets.copy()
+                targets["상태"] = targets["이름"].apply(lambda x: "🟢 활동" if x in active_members else "⚪ 장기결석")
+                
+                # 3. 정렬 옵션 UI
+                st.markdown('<div class="info-tip">💡 <b>Tip:</b> <b>\'🌱 출석유무순\'</b>을 선택하면 자주 오는 성도님이 위쪽에 표시되어 찾기 쉽습니다.</div>', unsafe_allow_html=True)
+                sort_chk = st.radio("명단 정렬 기준:", ["🌱 출석유무순 (추천)", "👨‍👩‍👧‍👦 가족순", "🔤 이름순"], horizontal=True)
+                
+                # 4. 정렬 실행
+                if sort_chk == "🌱 출석유무순 (추천)":
+                    # 상태(활동->결석) 우선, 그 다음 이름순
+                    targets = targets.sort_values(by=["상태", "이름"], ascending=[True, True]) 
+                elif sort_chk == "👨‍👩‍👧‍👦 가족순":
+                    targets["가족ID_정렬"] = pd.to_numeric(targets["가족ID"], errors='coerce').fillna(99999)
+                    targets = targets.sort_values(by=["가족ID_정렬", "이름"])
+                elif sort_chk == "🔤 이름순":
+                    targets = targets.sort_values(by="이름")
+
+                # 5. 기존 체크 로직 연결
                 current_log = df_att[df_att["날짜"] == str(chk_date)]
                 grid_data = []
                 for _, member in targets.iterrows():
-                    row = {"이름": member["이름"], "소그룹": member["소그룹"]}
+                    row = {
+                        "이름": member["이름"], 
+                        "소그룹": member["소그룹"], 
+                        "상태": member["상태"] # 상태 컬럼 추가
+                    } 
                     member_log = current_log[current_log["이름"] == member["이름"]]
                     for col in target_meetings:
                         row[col] = not member_log[member_log["모임명"] == col].empty
                     grid_data.append(row)
                 
                 df_grid = pd.DataFrame(grid_data)
+                
+                # 6. 컬럼 설정 (상태 컬럼 표시)
                 col_conf = {
                     "이름": st.column_config.TextColumn("이름", disabled=True, pinned=True),
+                    "상태": st.column_config.TextColumn("상태", disabled=True, width="small"), # 좁게 설정
                     "소그룹": st.column_config.TextColumn("소그룹", disabled=True)
                 }
                 for col in target_meetings:
@@ -665,22 +703,13 @@ def main():
 
     elif sel_menu == "👥 명단 관리":
         st.subheader("명단 관리")
-        
-        # [수정] 가족ID 자동 계산 로직 (v2.5)
         try:
-            # 가족ID 컬럼을 숫자로 변환 (오류나 빈칸은 0으로 처리)
             fam_ids = pd.to_numeric(df_members["가족ID"], errors='coerce').fillna(0)
             next_fam_id = int(fam_ids.max()) + 1
-        except:
-            next_fam_id = 1
-            
-        # [수정] 안내 메시지 박스
+        except: next_fam_id = 1
         c1, c2 = st.columns(2)
-        c1.metric("총 인원", f"{len(df_members)}명")
-        c2.metric("새 가족 등록 시 추천 ID", f"{next_fam_id}번")
-        
-        st.caption("※ 맨 앞의 숫자는 '행 번호'로 자동 생성됩니다. 신경 쓰지 않으셔도 됩니다.")
-        st.caption(f"※ 기존 가족이 있는 경우, 해당 가족의 **가족ID**를 확인하여 똑같이 입력해주세요.")
+        c1.metric("총 인원", f"{len(df_members)}명"); c2.metric("새 가족 등록 시 추천 ID", f"{next_fam_id}번")
+        st.caption("※ 맨 앞의 숫자는 '행 번호'로 자동 생성됩니다. 기존 가족은 해당 ID를 확인하여 동일하게 입력하세요.")
         
         if is_admin: target = df_members
         else:
@@ -689,7 +718,6 @@ def main():
             st.info(f"담당: {', '.join(my_gs)}")
         
         sort_option = st.radio("정렬 기준 선택", ["👨‍👩‍👧‍👦 가족끼리(기본)", "🔤 이름순", "🏘️ 소그룹순", "🎂 생일순(월일)", "👵 연령순(나이)"], horizontal=True)
-        
         if not target.empty:
             target = target.copy()
             if sort_option == "👨‍👩‍👧‍👦 가족끼리(기본)":
@@ -719,6 +747,10 @@ def main():
                 others = df_members[~mask]
                 save_data("members", pd.concat([others, edited], ignore_index=True))
             st.success("저장 완료!"); st.rerun()
+
+    # [NEW] 개발 로그 탭 (v2.6)
+    elif sel_menu == "🛠️ 개발 로그":
+        draw_changelog()
 
     elif sel_menu == "🔐 계정 관리" and is_admin:
         st.subheader("계정 관리")
