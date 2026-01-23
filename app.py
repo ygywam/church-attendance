@@ -6,14 +6,13 @@ import time
 import gspread
 import extra_streamlit_components as stx
 from oauth2client.service_account import ServiceAccountCredentials
-# import re (삭제됨)
+# import re (삭제됨 - 아이폰 오류 방지)
 from korean_lunar_calendar import KoreanLunarCalendar
 
 # --- [설정] 구글 시트 파일 이름 ---
 SHEET_NAME = "교회출석데이터"
 
 # --- [설정] 부서별 표시할 모임 정의 ---
-# [수정] 중고등부, 청년부 순서 반영
 COLS_ADULT = ["주일 1부", "주일 2부", "주일 오후", "소그룹 모임"]
 COLS_YOUTH = ["중고등부", "주일 1부", "주일 2부", "주일 오후"]
 COLS_YOUNG = ["청년부", "주일 1부", "주일 2부", "주일 오후"]
@@ -33,7 +32,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v2.3", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v2.4", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -132,6 +131,7 @@ def load_data(sheet_name):
     data = ws.get_all_records()
     if not data:
         if sheet_name == "members":
+            # [수정] 순서 반영: 생일 옆에 음력
             return pd.DataFrame(columns=["이름", "성별", "생일", "음력", "전화번호", "주소", "가족ID", "소그룹", "비고"])
         elif sheet_name == "attendance_log":
             return pd.DataFrame(columns=["날짜", "모임명", "이름", "소그룹", "출석여부"])
@@ -143,7 +143,6 @@ def load_data(sheet_name):
             return pd.DataFrame(columns=["날짜", "내용", "작성자"])
         elif sheet_name == "reports":
             return pd.DataFrame(columns=["날짜", "작성자", "내용", "답변"])
-    # [중요] 모든 데이터를 문자열로 변환하여 빈 값 비교를 용이하게 함
     return pd.DataFrame(data).astype(str)
 
 def save_data(sheet_name, df):
@@ -285,7 +284,7 @@ def draw_birthday_calendar(df_members):
 
 def draw_manual_tab():
     st.markdown("""
-    ## 📘 회정교회 출석체크 시스템 사용법 (v2.3)
+    ## 📘 회정교회 출석체크 시스템 사용법 (v2.4)
     ---
     """)
     with st.expander("✅ 1. 출석체크 하는 법"):
@@ -320,7 +319,6 @@ def draw_notice_section(is_admin, current_user_name):
 # --- 로그인 & 회원가입 로직 ---
 def process_login(username, password, cookie_manager):
     df_users = load_data("users")
-    # 문자열 변환 후 비교
     matched = df_users[(df_users["아이디"].astype(str) == str(username)) & (df_users["비밀번호"].astype(str) == str(password))]
     if not matched.empty:
         st.session_state["logged_in"] = True
@@ -331,34 +329,25 @@ def process_login(username, password, cookie_manager):
     else: st.error("아이디 또는 비밀번호가 일치하지 않습니다.")
 
 def process_signup(reg_name, reg_id, reg_pw):
-    # 1. users 시트 연결
     ws = get_worksheet("users")
     if not ws: return
     
-    # 2. 이름 검색 (find 사용)
     try:
-        cell = ws.find(reg_name) # 이름이 있는 셀 찾기
+        cell = ws.find(reg_name) 
     except gspread.exceptions.CellNotFound:
         st.error(f"❌ '{reg_name}'님은 명단에 없습니다. 관리자에게 문의해주세요.")
         return
 
-    # 3. 해당 행의 데이터 가져오기
-    # users 시트 순서 가정: A:아이디, B:비번, C:이름, D:역할, E:소그룹
     row_num = cell.row
-    # row_values는 리스트로 반환 (index 0부터 시작)
-    # A열(아이디)은 index 0, B열(비번)은 index 1
     existing_id = ws.cell(row_num, 1).value 
     
-    # 4. 아이디가 비어있는지 확인 (이미 등록된 경우 방지)
     if existing_id and str(existing_id).strip() != "":
         st.error("❌ 이미 등록된 계정이 있습니다. 분실 시 관리자에게 초기화를 요청하세요.")
         return
 
-    # 5. 등록 (빈칸 채우기)
-    ws.update_cell(row_num, 1, reg_id) # A열: 아이디
-    ws.update_cell(row_num, 2, reg_pw) # B열: 비번
+    ws.update_cell(row_num, 1, reg_id) 
+    ws.update_cell(row_num, 2, reg_pw) 
     
-    # 캐시 초기화 후 메시지
     load_data.clear()
     st.success(f"✅ 환영합니다, {reg_name}님! 계정이 생성되었습니다.")
     st.info("이제 [🔑 로그인] 메뉴로 이동하여 로그인해주세요.")
@@ -375,13 +364,12 @@ def process_logout(cookie_manager):
 # --- 4. 메인 앱 ---
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
-    st.title("⛪ 회정교회 출석체크 시스템 v2.3")
+    st.title("⛪ 회정교회 출석체크 시스템 v2.4")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
         st.session_state["user_info"] = None
 
-    # 자동 로그인 체크
     if not st.session_state["logged_in"]:
         time.sleep(0.5)
         cookie_id = cookie_manager.get(cookie="church_user_id")
@@ -395,7 +383,6 @@ def main():
 
     with st.sidebar:
         if not st.session_state["logged_in"]:
-            # [수정] 로그인 / 계정 생성 모드 선택
             mode = st.radio("접속 모드", ["🔑 로그인", "✨ 계정 생성"], index=0)
             st.divider()
             
@@ -685,7 +672,10 @@ def main():
             my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
             target = df_members[df_members["소그룹"].isin(my_gs)]
             st.info(f"담당: {', '.join(my_gs)}")
-        sort_option = st.radio("정렬 기준 선택", ["👨‍👩‍👧‍👦 가족끼리(기본)", "🔤 이름순", "🏘️ 소그룹순", "🎂 생일순"], horizontal=True)
+        
+        # [수정] 정렬 옵션 추가 (v2.4)
+        sort_option = st.radio("정렬 기준 선택", ["👨‍👩‍👧‍👦 가족끼리(기본)", "🔤 이름순", "🏘️ 소그룹순", "🎂 생일순(월일)", "👵 연령순(나이)"], horizontal=True)
+        
         if not target.empty:
             target = target.copy()
             if sort_option == "👨‍👩‍👧‍👦 가족끼리(기본)":
@@ -694,7 +684,20 @@ def main():
                 del target["가족ID_정렬"]
             elif sort_option == "🔤 이름순": target = target.sort_values(by="이름")
             elif sort_option == "🏘️ 소그룹순": target = target.sort_values(by=["소그룹", "이름"])
-            elif sort_option == "🎂 생일순": target = target.sort_values(by="생일")
+            elif sort_option == "🎂 생일순(월일)":
+                # [수정] 연도 무시하고 월/일로만 정렬 (안전 파싱 사용)
+                def get_mmdd(date_str):
+                    nums = extract_date_numbers(date_str)
+                    if len(nums) >= 3: return nums[1] * 100 + nums[2]
+                    elif len(nums) == 2: return nums[0] * 100 + nums[1]
+                    return 9999 # 날짜 없으면 맨 뒤로
+                
+                target["temp_sort"] = target["생일"].apply(get_mmdd)
+                target = target.sort_values(by="temp_sort")
+                del target["temp_sort"]
+                
+            elif sort_option == "👵 연령순(나이)": target = target.sort_values(by="생일") # 연도 포함 정렬
+
         col_conf_mem = {"이름": st.column_config.TextColumn(pinned=True)}
         edited = st.data_editor(target, num_rows="dynamic", use_container_width=True, column_config=col_conf_mem)
         if st.button("저장"):
@@ -713,4 +716,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
