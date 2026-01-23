@@ -6,7 +6,7 @@ import time
 import gspread
 import extra_streamlit_components as stx
 from oauth2client.service_account import ServiceAccountCredentials
-import re 
+# import re  <-- 이 부분을 삭제했습니다 (오류 원인 제거)
 from korean_lunar_calendar import KoreanLunarCalendar
 
 # --- [설정] 구글 시트 파일 이름 ---
@@ -14,8 +14,8 @@ SHEET_NAME = "교회출석데이터"
 
 # --- [설정] 부서별 표시할 모임 정의 ---
 COLS_ADULT = ["주일 1부", "주일 2부", "주일 오후", "소그룹 모임"]
-COLS_YOUTH = ["주일 1부", "주일 2부", "주일 오후", "중고등부"]
-COLS_YOUNG = ["주일 1부", "주일 2부", "주일 오후", "청년부"]
+COLS_YOUTH = ["중고등부", "주일 1부", "주일 2부", "주일 오후"]
+COLS_YOUNG = ["청년부", "주일 1부", "주일 2부", "주일 오후"]
 COLS_KIDS = ["주일학교"]
 
 # 전체 모임 리스트
@@ -32,7 +32,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v2.2", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v2.2.1", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -135,7 +135,7 @@ def load_data(sheet_name):
     data = ws.get_all_records()
     if not data:
         if sheet_name == "members":
-            return pd.DataFrame(columns=["이름", "성별", "생일", "전화번호", "주소", "가족ID", "소그룹", "비고", "음력"])
+            return pd.DataFrame(columns=["이름", "성별", "생일", "음력", "전화번호", "주소", "가족ID", "소그룹", "비고"])
         elif sheet_name == "attendance_log":
             return pd.DataFrame(columns=["날짜", "모임명", "이름", "소그룹", "출석여부"])
         elif sheet_name == "users":
@@ -177,9 +177,23 @@ def get_target_columns(weekday_idx, group_name):
     elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name: return COLS_KIDS
     else: return COLS_ADULT
 
-# [수정] 달력 월 이동 기능 추가 (v2.2)
+# [수정] 안전한 날짜 파싱 함수 (정규표현식 제거)
+def extract_date_numbers(date_str):
+    # 숫자만 추출해서 리스트로 반환하는 안전한 함수
+    nums = []
+    current_num = ""
+    for char in str(date_str):
+        if char.isdigit():
+            current_num += char
+        else:
+            if current_num:
+                nums.append(int(current_num))
+                current_num = ""
+    if current_num:
+        nums.append(int(current_num))
+    return nums
+
 def draw_birthday_calendar(df_members):
-    # 1. 현재 보여줄 년/월을 세션 상태에서 관리
     real_today = datetime.date.today()
     
     if "cal_year" not in st.session_state:
@@ -187,7 +201,6 @@ def draw_birthday_calendar(df_members):
     if "cal_month" not in st.session_state:
         st.session_state["cal_month"] = real_today.month
 
-    # 2. 네비게이션 버튼 (이전 달 / 다음 달)
     c_prev, c_title, c_next = st.columns([1, 4, 1])
     
     with c_prev:
@@ -209,7 +222,6 @@ def draw_birthday_calendar(df_members):
                 st.session_state["cal_year"] += 1
             st.rerun()
 
-    # 3. 달력 로직은 선택된 년(year), 월(month)을 기준으로 계산
     year = st.session_state["cal_year"]
     month = st.session_state["cal_month"]
     
@@ -224,17 +236,18 @@ def draw_birthday_calendar(df_members):
 
         for _, row in df_members.iterrows():
             try:
-                raw_birth = str(row["생일"])
-                parts = re.findall(r'\d+', raw_birth)
+                # [수정] 정규표현식 대신 안전한 함수 사용
+                parts = extract_date_numbers(row["생일"])
+                
                 b_month_origin = 0
                 b_day_origin = 0
 
                 if len(parts) >= 3:
-                    b_month_origin = int(parts[1])
-                    b_day_origin = int(parts[2])
+                    b_month_origin = parts[1]
+                    b_day_origin = parts[2]
                 elif len(parts) == 2:
-                    b_month_origin = int(parts[0])
-                    b_day_origin = int(parts[1])
+                    b_month_origin = parts[0]
+                    b_day_origin = parts[1]
                 
                 if b_month_origin == 0 or b_day_origin == 0: continue
 
@@ -247,7 +260,6 @@ def draw_birthday_calendar(df_members):
                         is_lunar = True
 
                 if is_lunar:
-                    # 선택된 year 기준으로 음력 변환
                     check_years = [year - 1, year, year + 1]
                     for check_year in check_years:
                         try:
@@ -270,7 +282,6 @@ def draw_birthday_calendar(df_members):
 
             except: continue
 
-    # st.markdown(f"### 📅 {year}년 {month}월 생일 달력") # 제목은 위 버튼 사이에 넣었으므로 제거
     html_code = '<div class="calendar-container">'
     weeks = ["일", "월", "화", "수", "목", "금", "토"]
     for i, w in enumerate(weeks):
@@ -284,7 +295,6 @@ def draw_birthday_calendar(df_members):
         for day in week:
             if day == 0: html_code += '<div class="cal-cell" style="border:none;"></div>'
             else:
-                # 오늘 날짜 표시는 "실제 오늘"과 연/월/일이 모두 같을 때만
                 is_today = "today" if (day == real_today.day and month == real_today.month and year == real_today.year) else ""
                 style = "color: red;" if (day == real_today.day and month == real_today.month and year == real_today.year) else ""
                 html_code += f'<div class="cal-cell {is_today}"><div style="{style} font-weight:bold;">{day}</div>'
@@ -295,10 +305,9 @@ def draw_birthday_calendar(df_members):
     html_code += '</div>'
     st.markdown(html_code, unsafe_allow_html=True)
 
-# [수정] 상세하고 친절한 사용설명서 함수
 def draw_manual_tab():
     st.markdown("""
-    ## 📘 회정교회 출석체크 시스템 사용법 (v2.2)
+    ## 📘 회정교회 출석체크 시스템 사용법 (v2.2.1)
     
     환영합니다! 이 시스템은 소그룹 리더님들이 스마트폰으로 간편하게 사역을 관리하실 수 있도록 만들어졌습니다.
     처음 사용하셔도 괜찮아요. 아래 설명대로 천천히 따라해보세요. 😊
@@ -389,7 +398,7 @@ def process_logout(cookie_manager):
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
     
-    st.title("⛪ 회정교회 출석체크 시스템 v2.2")
+    st.title("⛪ 회정교회 출석체크 시스템 v2.2.1")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -442,7 +451,6 @@ def main():
         st.markdown('<div class="info-tip">👋 환영합니다! 공지사항과 생일자를 확인해보세요.</div>', unsafe_allow_html=True)
         draw_notice_section(is_admin, current_user_name)
         st.subheader("생일 캘린더")
-        # 달력 이동은 함수 내부에서 처리하므로 바로 호출
         draw_birthday_calendar(df_members)
 
     # --- 2. 사용설명서 ---
