@@ -6,13 +6,14 @@ import time
 import gspread
 import extra_streamlit_components as stx
 from oauth2client.service_account import ServiceAccountCredentials
-# import re  <-- 이 부분을 삭제했습니다 (오류 원인 제거)
+# import re (삭제됨)
 from korean_lunar_calendar import KoreanLunarCalendar
 
 # --- [설정] 구글 시트 파일 이름 ---
 SHEET_NAME = "교회출석데이터"
 
 # --- [설정] 부서별 표시할 모임 정의 ---
+# [수정] 중고등부, 청년부 순서 반영
 COLS_ADULT = ["주일 1부", "주일 2부", "주일 오후", "소그룹 모임"]
 COLS_YOUTH = ["중고등부", "주일 1부", "주일 2부", "주일 오후"]
 COLS_YOUNG = ["청년부", "주일 1부", "주일 2부", "주일 오후"]
@@ -32,7 +33,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v2.2.1", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v2.3", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -44,14 +45,12 @@ st.markdown("""
     }
     .stButton button { font-size: 20px !important; font-weight: bold; width: 100%; }
     
-    /* 공지사항 박스 */
     .notice-box {
         background-color: #fff3cd; border: 2px solid #ffeeba; color: #856404;
         padding: 15px; border-radius: 10px; margin-bottom: 20px;
         text-align: center; font-size: 20px; font-weight: bold; line-height: 1.5; word-break: keep-all;
     }
     
-    /* 사역보고 카드 스타일 */
     .report-card {
         background-color: #f8f9fa; border: 1px solid #dee2e6; 
         border-radius: 10px; padding: 20px; margin-bottom: 15px;
@@ -65,7 +64,6 @@ st.markdown("""
     }
     .reply-title { color: #2e7d32; font-weight: bold; font-size: 16px; margin-bottom: 5px; }
 
-    /* 달력 스타일 */
     .calendar-container { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; width: 100%; }
     .cal-header { text-align: center; font-weight: bold; padding: 5px 0; font-size: 16px; }
     .cal-cell {
@@ -83,7 +81,6 @@ st.markdown("""
         font-size: 12px; border-radius: 4px; padding: 2px; margin-top: 4px;
         word-break: keep-all; line-height: 1.2; font-weight: bold;
     }
-    /* 탭 메뉴 설명 박스 */
     .info-tip {
         background-color: #e3f2fd; border-left: 5px solid #2196f3;
         padding: 15px; margin-bottom: 20px; border-radius: 5px; color: #0d47a1;
@@ -135,7 +132,7 @@ def load_data(sheet_name):
     data = ws.get_all_records()
     if not data:
         if sheet_name == "members":
-            return pd.DataFrame(columns=["이름", "성별", "생일", "음력", "전화번호", "주소", "가족ID", "소그룹", "비고"])
+            return pd.DataFrame(columns=["이름", "성별", "생일", "전화번호", "주소", "가족ID", "소그룹", "비고", "음력"])
         elif sheet_name == "attendance_log":
             return pd.DataFrame(columns=["날짜", "모임명", "이름", "소그룹", "출석여부"])
         elif sheet_name == "users":
@@ -146,6 +143,7 @@ def load_data(sheet_name):
             return pd.DataFrame(columns=["날짜", "내용", "작성자"])
         elif sheet_name == "reports":
             return pd.DataFrame(columns=["날짜", "작성자", "내용", "답변"])
+    # [중요] 모든 데이터를 문자열로 변환하여 빈 값 비교를 용이하게 함
     return pd.DataFrame(data).astype(str)
 
 def save_data(sheet_name, df):
@@ -177,9 +175,8 @@ def get_target_columns(weekday_idx, group_name):
     elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name: return COLS_KIDS
     else: return COLS_ADULT
 
-# [수정] 안전한 날짜 파싱 함수 (정규표현식 제거)
+# [안전한 날짜 파싱]
 def extract_date_numbers(date_str):
-    # 숫자만 추출해서 리스트로 반환하는 안전한 함수
     nums = []
     current_num = ""
     for char in str(date_str):
@@ -195,14 +192,12 @@ def extract_date_numbers(date_str):
 
 def draw_birthday_calendar(df_members):
     real_today = datetime.date.today()
-    
     if "cal_year" not in st.session_state:
         st.session_state["cal_year"] = real_today.year
     if "cal_month" not in st.session_state:
         st.session_state["cal_month"] = real_today.month
 
     c_prev, c_title, c_next = st.columns([1, 4, 1])
-    
     with c_prev:
         if st.button("◀ 이전"):
             st.session_state["cal_month"] -= 1
@@ -210,10 +205,8 @@ def draw_birthday_calendar(df_members):
                 st.session_state["cal_month"] = 12
                 st.session_state["cal_year"] -= 1
             st.rerun()
-            
     with c_title:
         st.markdown(f"<h3 style='text-align: center; margin: 0;'>{st.session_state['cal_year']}년 {st.session_state['cal_month']}월</h3>", unsafe_allow_html=True)
-        
     with c_next:
         if st.button("다음 ▶"):
             st.session_state["cal_month"] += 1
@@ -224,7 +217,6 @@ def draw_birthday_calendar(df_members):
 
     year = st.session_state["cal_year"]
     month = st.session_state["cal_month"]
-    
     birthdays = {}
     calendar_converter = KoreanLunarCalendar()
 
@@ -236,39 +228,28 @@ def draw_birthday_calendar(df_members):
 
         for _, row in df_members.iterrows():
             try:
-                # [수정] 정규표현식 대신 안전한 함수 사용
                 parts = extract_date_numbers(row["생일"])
-                
-                b_month_origin = 0
-                b_day_origin = 0
-
                 if len(parts) >= 3:
-                    b_month_origin = parts[1]
-                    b_day_origin = parts[2]
+                    b_month_origin, b_day_origin = parts[1], parts[2]
                 elif len(parts) == 2:
-                    b_month_origin = parts[0]
-                    b_day_origin = parts[1]
+                    b_month_origin, b_day_origin = parts[0], parts[1]
+                else: continue
                 
                 if b_month_origin == 0 or b_day_origin == 0: continue
-
                 group_name = str(row.get("소그룹", "")).strip()
 
                 is_lunar = False
                 if lunar_col_name:
                     val = str(row[lunar_col_name]).strip().upper()
-                    if val in ["O", "0", "ㅇ", "YES", "TRUE", "Y"]:
-                        is_lunar = True
+                    if val in ["O", "0", "ㅇ", "YES", "TRUE", "Y"]: is_lunar = True
 
                 if is_lunar:
                     check_years = [year - 1, year, year + 1]
                     for check_year in check_years:
                         try:
                             calendar_converter.setLunarDate(check_year, b_month_origin, b_day_origin, False)
-                            s_year = calendar_converter.solarYear
-                            s_month = calendar_converter.solarMonth
-                            s_day = calendar_converter.solarDay
-                            
-                            if s_year == year and s_month == month:
+                            if calendar_converter.solarYear == year and calendar_converter.solarMonth == month:
+                                s_day = calendar_converter.solarDay
                                 display_name = f"{row['이름']}({group_name})(음)"
                                 if str(s_day) not in birthdays: birthdays[str(s_day)] = []
                                 if not any(p['name'] == display_name for p in birthdays[str(s_day)]):
@@ -279,7 +260,6 @@ def draw_birthday_calendar(df_members):
                         display_name = f"{row['이름']}({group_name})"
                         if str(b_day_origin) not in birthdays: birthdays[str(b_day_origin)] = []
                         birthdays[str(b_day_origin)].append({"name": display_name, "style": "b-badge"})
-
             except: continue
 
     html_code = '<div class="calendar-container">'
@@ -287,10 +267,8 @@ def draw_birthday_calendar(df_members):
     for i, w in enumerate(weeks):
         color = "red" if i==0 else "blue" if i==6 else "#333"
         html_code += f'<div class="cal-header" style="color: {color};">{w}</div>'
-    
     calendar.setfirstweekday(6) 
     cal = calendar.monthcalendar(year, month)
-    
     for week in cal:
         for day in week:
             if day == 0: html_code += '<div class="cal-cell" style="border:none;"></div>'
@@ -307,64 +285,28 @@ def draw_birthday_calendar(df_members):
 
 def draw_manual_tab():
     st.markdown("""
-    ## 📘 회정교회 출석체크 시스템 사용법 (v2.2.1)
-    
-    환영합니다! 이 시스템은 소그룹 리더님들이 스마트폰으로 간편하게 사역을 관리하실 수 있도록 만들어졌습니다.
-    처음 사용하셔도 괜찮아요. 아래 설명대로 천천히 따라해보세요. 😊
-    
+    ## 📘 회정교회 출석체크 시스템 사용법 (v2.3)
     ---
     """)
-    
-    with st.expander("✅ 1. 출석체크 하는 법 (가장 중요!)", expanded=True):
+    with st.expander("✅ 1. 출석체크 하는 법"):
         st.markdown("""
-        1. **메뉴 선택:** 상단 메뉴에서 **[📋 출석체크]**를 눌러주세요.
-        2. **날짜 선택:** 오늘 날짜가 자동으로 선택되어 있습니다. (지난 날짜도 선택 가능)
-        3. **소그룹 확인:** 본인이 담당한 소그룹 명단이 자동으로 나옵니다.
-        4. **체크하기:** * 표의 오른쪽 **체크박스(ㅁ)**를 눌러 출석한 분들을 체크해주세요.
-           * 화면을 오른쪽으로 밀어도 **이름은 왼쪽에 고정**되어 있어 헷갈리지 않아요!
-        5. **저장 필수:** 체크를 다 하셨다면 표 아래에 있는 **[✅ 출석 저장하기]** 버튼을 꼭! 눌러주세요.
-           * *"저장 완료!"* 메시지가 뜨면 성공입니다.
+        1. **[📋 출석체크]** 메뉴 선택.
+        2. 날짜 확인 후 해당되는 모임 출석 체크.
+        3. 하단 **[✅ 출석 저장하기]** 버튼 클릭 필수.
         """)
-
-    with st.expander("📊 2. 지난 출석 확인 및 수정하기"):
-        st.markdown("""
-        1. **메뉴 선택:** 상단 메뉴에서 **[📊 통계]**를 눌러주세요.
-        2. **기간 조회:** 원하는 기간을 설정하면 누가 얼마나 왔는지 한눈에 표로 보여줍니다.
-        3. **수정 기능:**
-           * 만약 지난주에 실수로 체크를 못 했다면?
-           * 표 아래에 있는 **[수정할 이름 선택]** 상자에서 성도님 이름을 찾으세요.
-           * 그분의 출석 기록이 나오면 체크박스를 수정하고 **[💾 수정사항 저장하기]**를 누르면 끝!
-        """)
-
-    with st.expander("📨 3. 사역 보고서 작성하기"):
-        st.markdown("""
-        1. **메뉴 선택:** 상단 메뉴에서 **[📨 사역 보고]**를 눌러주세요.
-        2. **보고서 쓰기:**
-           * **[📝 새 보고서 작성하기]**를 누르면 입력창이 열립니다.
-           * 이번 주 모임 내용, 심방 내용, 특이사항 등을 편하게 적어주세요.
-           * **[제출]** 버튼을 누르면 목사님께 전달됩니다.
-        3. **피드백 확인:**
-           * 목사님이 보고서를 읽고 답글을 남기시면, 내 보고서 아래에 **초록색 상자(💌 목회자 피드백)**로 표시됩니다.
-        """)
-
-    with st.expander("🎂 4. 생일 및 명단 관리"):
-        st.markdown("""
-        * **생일 달력:** **[🏠 홈]** 화면에서 이번 달 생일자를 확인하세요. 
-           * **[◀ 이전] [다음 ▶]** 버튼을 눌러 지난달이나 다음 달 생일자도 미리 볼 수 있습니다.
-        * **명단 수정:** **[👥 명단 관리]** 메뉴에서 전화번호나 주소가 바뀌었을 때 직접 수정하고 저장할 수 있습니다.
-        * **음력 생일 등록:** 명단 관리에서 **'음력'** 칸에 알파벳 **O**를 입력하면, 자동으로 양력으로 변환되어 달력에 표시됩니다.
-        """)
-        
-    st.info("💡 사용하시다가 안 되는 부분이 있거나 건의사항이 있으면 언제든 말씀해주세요!")
+    with st.expander("📊 2. 지난 출석 확인 및 수정"):
+        st.markdown("1. **[📊 통계]** 메뉴에서 기간 설정 후 조회.\n2. 하단 수정 메뉴에서 개인별 기록 수정 가능.")
+    with st.expander("📨 3. 사역 보고서"):
+        st.markdown("1. **[📨 사역 보고]** 메뉴에서 새 보고서 작성.\n2. 목사님의 답변(피드백) 확인 가능.")
+    with st.expander("🎂 4. 생일 및 명단"):
+        st.markdown("1. **[🏠 홈]**에서 생일 달력 확인 (이전/다음 달 이동 가능).\n2. **[👥 명단 관리]**에서 정보 수정 및 음력 생일(O) 표시.")
+    st.info("💡 처음 오신 소그룹장님은 사이드바의 **[✨ 계정 생성]** 메뉴에서 아이디를 등록해주세요.")
 
 def draw_notice_section(is_admin, current_user_name):
     df_notices = load_data("notices")
     if not df_notices.empty:
         latest = df_notices.sort_values(by="날짜", ascending=False).iloc[0]
         st.markdown(f"""<div class="notice-box">📢 <b>공지사항 ({latest['날짜']})</b><br><br>{latest['내용']}</div>""", unsafe_allow_html=True)
-    else:
-        if is_admin: st.info("등록된 공지사항이 없습니다.")
-
     if is_admin:
         with st.expander("📢 공지사항 등록 (관리자)"):
             with st.form("notice_form"):
@@ -375,73 +317,120 @@ def draw_notice_section(is_admin, current_user_name):
                     save_data("notices", pd.concat([df_notices, new_n], ignore_index=True))
                     st.success("등록됨"); st.rerun()
 
-# 로그인 관련
+# --- 로그인 & 회원가입 로직 ---
 def process_login(username, password, cookie_manager):
     df_users = load_data("users")
-    matched = df_users[(df_users["아이디"] == username) & (df_users["비밀번호"] == password)]
+    # 문자열 변환 후 비교
+    matched = df_users[(df_users["아이디"].astype(str) == str(username)) & (df_users["비밀번호"].astype(str) == str(password))]
     if not matched.empty:
         st.session_state["logged_in"] = True
         st.session_state["user_info"] = matched.iloc[0].to_dict()
         exp = datetime.datetime.now() + datetime.timedelta(days=30)
         cookie_manager.set("church_user_id", username, expires_at=exp)
         st.rerun()
-    else: st.error("정보 불일치")
+    else: st.error("아이디 또는 비밀번호가 일치하지 않습니다.")
 
-# [수정] 로그아웃 로직: 쿠키 삭제 시간을 벌어주기 위해 대기 시간 추가
+def process_signup(reg_name, reg_id, reg_pw):
+    # 1. users 시트 연결
+    ws = get_worksheet("users")
+    if not ws: return
+    
+    # 2. 이름 검색 (find 사용)
+    try:
+        cell = ws.find(reg_name) # 이름이 있는 셀 찾기
+    except gspread.exceptions.CellNotFound:
+        st.error(f"❌ '{reg_name}'님은 명단에 없습니다. 관리자에게 문의해주세요.")
+        return
+
+    # 3. 해당 행의 데이터 가져오기
+    # users 시트 순서 가정: A:아이디, B:비번, C:이름, D:역할, E:소그룹
+    row_num = cell.row
+    # row_values는 리스트로 반환 (index 0부터 시작)
+    # A열(아이디)은 index 0, B열(비번)은 index 1
+    existing_id = ws.cell(row_num, 1).value 
+    
+    # 4. 아이디가 비어있는지 확인 (이미 등록된 경우 방지)
+    if existing_id and str(existing_id).strip() != "":
+        st.error("❌ 이미 등록된 계정이 있습니다. 분실 시 관리자에게 초기화를 요청하세요.")
+        return
+
+    # 5. 등록 (빈칸 채우기)
+    ws.update_cell(row_num, 1, reg_id) # A열: 아이디
+    ws.update_cell(row_num, 2, reg_pw) # B열: 비번
+    
+    # 캐시 초기화 후 메시지
+    load_data.clear()
+    st.success(f"✅ 환영합니다, {reg_name}님! 계정이 생성되었습니다.")
+    st.info("이제 [🔑 로그인] 메뉴로 이동하여 로그인해주세요.")
+
 def process_logout(cookie_manager):
-    # 1. 세션 상태 초기화
     st.session_state["logged_in"] = False
     st.session_state["user_info"] = None
-    
-    # 2. 쿠키 삭제 명령
-    try:
-        cookie_manager.delete("church_user_id")
-    except:
-        pass
-    
-    # 3. [핵심] 브라우저가 쿠키를 지울 시간을 줌 (1초 대기)
+    try: cookie_manager.delete("church_user_id")
+    except: pass
     with st.spinner("로그아웃 중입니다..."):
         time.sleep(1)
-        
-    # 4. 새로고침
     st.rerun()
 
 # --- 4. 메인 앱 ---
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
-    
-    st.title("⛪ 회정교회 출석체크 시스템 v2.2.1")
+    st.title("⛪ 회정교회 출석체크 시스템 v2.3")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
         st.session_state["user_info"] = None
 
+    # 자동 로그인 체크
     if not st.session_state["logged_in"]:
         time.sleep(0.5)
         cookie_id = cookie_manager.get(cookie="church_user_id")
         if cookie_id:
             df_users = load_data("users")
-            match = df_users[df_users["아이디"] == cookie_id]
+            match = df_users[df_users["아이디"].astype(str) == str(cookie_id)]
             if not match.empty:
                 st.session_state["logged_in"] = True
                 st.session_state["user_info"] = match.iloc[0].to_dict()
                 st.rerun()
 
     with st.sidebar:
-        st.header("로그인")
         if not st.session_state["logged_in"]:
-            uid = st.text_input("아이디", key="lid")
-            upw = st.text_input("비밀번호", type="password", key="lpw")
-            if st.button("로그인"): process_login(uid, upw, cookie_manager)
-            st.caption("초기: admin / 1234")
+            # [수정] 로그인 / 계정 생성 모드 선택
+            mode = st.radio("접속 모드", ["🔑 로그인", "✨ 계정 생성"], index=0)
+            st.divider()
+            
+            if mode == "🔑 로그인":
+                st.header("로그인")
+                uid = st.text_input("아이디", key="lid")
+                upw = st.text_input("비밀번호", type="password", key="lpw")
+                if st.button("로그인", use_container_width=True): 
+                    process_login(uid, upw, cookie_manager)
+            else:
+                st.header("계정 생성 (최초 1회)")
+                st.caption("관리자가 등록한 이름이 있어야 가입 가능합니다.")
+                reg_name = st.text_input("이름 (실명)", placeholder="예: 홍길동")
+                reg_id = st.text_input("사용할 아이디")
+                reg_pw = st.text_input("사용할 비밀번호", type="password")
+                reg_pw_chk = st.text_input("비밀번호 확인", type="password")
+                
+                if st.button("가입하기", use_container_width=True):
+                    if not reg_name or not reg_id or not reg_pw:
+                        st.warning("모든 정보를 입력해주세요.")
+                    elif reg_pw != reg_pw_chk:
+                        st.error("비밀번호가 일치하지 않습니다.")
+                    else:
+                        process_signup(reg_name, reg_id, reg_pw)
+
         else:
             u = st.session_state["user_info"]
-            st.success(f"{u['이름']}님 환영합니다")
+            st.success(f"👤 {u['이름']}님 환영합니다")
             st.caption(f"권한: {u['역할']}")
-            if st.button("로그아웃"): process_logout(cookie_manager)
+            if st.button("로그아웃", use_container_width=True): 
+                process_logout(cookie_manager)
 
     if not st.session_state["logged_in"]:
-        st.warning("👈 로그인해주세요."); st.stop()
+        st.info("👈 왼쪽 사이드바에서 로그인하거나 계정을 생성해주세요.")
+        st.stop()
 
     current_user = st.session_state["user_info"]
     current_user_name = current_user["이름"]
@@ -458,18 +447,16 @@ def main():
     sel_menu = st.radio("메뉴", menu, horizontal=True, label_visibility="collapsed")
     st.divider()
 
-    # --- 1. 홈 ---
+    # --- 각 메뉴 연결 ---
     if sel_menu == "🏠 홈":
         st.markdown('<div class="info-tip">👋 환영합니다! 공지사항과 생일자를 확인해보세요.</div>', unsafe_allow_html=True)
         draw_notice_section(is_admin, current_user_name)
         st.subheader("생일 캘린더")
         draw_birthday_calendar(df_members)
 
-    # --- 2. 사용설명서 ---
     elif sel_menu == "📖 사용설명서":
         draw_manual_tab()
 
-    # --- 3. 출석체크 ---
     elif sel_menu == "📋 출석체크":
         st.subheader("📋 요일별 맞춤 출석체크")
         st.markdown('<div class="info-tip">💡 <b>Tip:</b> 날짜를 선택하면 해당 요일의 모임이 자동으로 뜹니다. 체크 후 반드시 하단 <b>[저장하기]</b>를 눌러주세요.</div>', unsafe_allow_html=True)
@@ -509,7 +496,6 @@ def main():
                     grid_data.append(row)
                 
                 df_grid = pd.DataFrame(grid_data)
-                
                 col_conf = {
                     "이름": st.column_config.TextColumn("이름", disabled=True, pinned=True),
                     "소그룹": st.column_config.TextColumn("소그룹", disabled=True)
@@ -538,7 +524,6 @@ def main():
                     save_data("attendance_log", final_df)
                     st.success(f"✅ {chk_date} ({day_str}) 출석 저장 완료!"); st.rerun()
 
-    # --- 4. 통계 ---
     elif sel_menu == "📊 통계":
         st.subheader("📊 출석 누적 현황 및 상세 조회")
         st.markdown('<div class="info-tip">💡 <b>Tip:</b> 기간을 설정하여 출석 현황을 한눈에 보세요. 지난주 출석을 수정하려면 <b>하단 수정 메뉴</b>를 이용하세요.</div>', unsafe_allow_html=True)
@@ -605,23 +590,19 @@ def main():
                                 save_data("attendance_log", final_df)
                                 st.success(f"✅ {selected_name}님의 기록 업데이트 완료!"); st.rerun()
 
-    # --- 5. 기도제목 ---
     elif sel_menu == "🙏 기도제목":
         st.subheader("기도제목 관리")
         st.markdown('<div class="info-tip">💡 <b>Tip:</b> 소그룹원들의 기도제목을 기록하고 히스토리를 관리해보세요.</div>', unsafe_allow_html=True)
-        
         if is_admin:
             st.markdown("### 🗓️ 주간 전체 기도제목 모아보기")
             c1, c2 = st.columns([1, 2])
             p_date = c1.date_input("조회 기준 날짜", datetime.date.today(), key="p_date_adm")
             sun, sat = get_week_range(p_date)
             c2.caption(f"📅 조회 기간: {sun.strftime('%Y-%m-%d')} ~ {sat.strftime('%Y-%m-%d')}")
-            
             df_prayer_stat = df_prayer.copy()
             df_prayer_stat["날짜"] = pd.to_datetime(df_prayer_stat["날짜"], errors='coerce')
             mask = (df_prayer_stat["날짜"] >= pd.Timestamp(sun)) & (df_prayer_stat["날짜"] <= pd.Timestamp(sat))
             weekly_prayers = df_prayer[mask].sort_values(by=["소그룹", "이름"])
-            
             if weekly_prayers.empty: st.info("해당 주간에 등록된 기도제목이 없습니다.")
             else: st.dataframe(weekly_prayers[["날짜", "소그룹", "이름", "내용"]], use_container_width=True, hide_index=True)
         else:
@@ -647,123 +628,75 @@ def main():
                 for i, r in hist.iterrows():
                     st.info(f"**{r['날짜']}**: {r['내용']}")
 
-    # --- 6. 사역 보고 ---
     elif sel_menu == "📨 사역 보고":
         st.subheader("📨 소그룹 사역 보고")
         st.markdown('<div class="info-tip">💡 <b>Tip:</b> 매주 소그룹 사역 내용을 적어주세요. 목사님의 답변도 여기서 확인할 수 있습니다.</div>', unsafe_allow_html=True)
-        
         if "답변" not in df_reports.columns: df_reports["답변"] = ""
-
         if is_admin:
             st.markdown("### 📥 관리자 모드: 보고서 확인 및 답변 작성")
             c1, c2 = st.columns([1, 2])
             r_date_adm = c1.date_input("조회 기준 날짜", datetime.date.today(), key="r_date_adm")
             sun, sat = get_week_range(r_date_adm)
             c2.caption(f"📅 조회 기간: {sun.strftime('%Y-%m-%d')} ~ {sat.strftime('%Y-%m-%d')}")
-            
             df_rep_stat = df_reports.copy()
             df_rep_stat["날짜"] = pd.to_datetime(df_rep_stat["날짜"], errors='coerce')
             mask = (df_rep_stat["날짜"] >= pd.Timestamp(sun)) & (df_rep_stat["날짜"] <= pd.Timestamp(sat))
             weekly_reports = df_reports[mask].sort_values(by="날짜", ascending=False)
-            
-            if weekly_reports.empty:
-                st.info("해당 주간에 제출된 보고서가 없습니다.")
+            if weekly_reports.empty: st.info("해당 주간에 제출된 보고서가 없습니다.")
             else:
                 for i, row in weekly_reports.iterrows():
                     with st.container():
-                        st.markdown(f"""
-                        <div class="report-card">
-                            <div class="report-header">🗓️ {row['날짜']} | 👤 {row['작성자']}</div>
-                            <div class="report-content">{row['내용']}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
+                        st.markdown(f"""<div class="report-card"><div class="report-header">🗓️ {row['날짜']} | 👤 {row['작성자']}</div><div class="report-content">{row['내용']}</div></div>""", unsafe_allow_html=True)
                         new_ans = st.text_area(f"💬 {row['작성자']}님 보고에 대한 피드백 작성", value=row['답변'], key=f"ans_{i}", height=70)
-                        
                         if st.button("답변 저장", key=f"btn_{i}"):
                             original_idx = row.name 
                             df_reports.at[original_idx, "답변"] = new_ans
                             save_data("reports", df_reports)
                             st.success(f"✅ {row['작성자']}님에게 답변을 저장했습니다!"); time.sleep(1); st.rerun()
                         st.divider()
-
         else:
             st.markdown(f"### 📂 {current_user_name}님의 보고서")
-            
             with st.expander("📝 새 보고서 작성하기"):
                 with st.form("report_form"):
                     r_date = st.date_input("작성일", datetime.date.today())
                     r_content = st.text_area("내용", height=150, placeholder="이번 주 모임 내용과 특이사항을 기록해주세요.")
                     if st.form_submit_button("제출"):
-                        new_r = pd.DataFrame([{
-                            "날짜": str(r_date), 
-                            "작성자": current_user_name, 
-                            "내용": r_content, 
-                            "답변": ""
-                        }])
+                        new_r = pd.DataFrame([{"날짜": str(r_date), "작성자": current_user_name, "내용": r_content, "답변": ""}])
                         save_data("reports", pd.concat([df_reports, new_r], ignore_index=True))
                         st.success("제출 완료"); st.rerun()
-            
             st.divider()
-            
             my_reports = df_reports[df_reports["작성자"] == current_user_name].copy()
-            if my_reports.empty:
-                st.info("제출한 보고서가 없습니다.")
+            if my_reports.empty: st.info("제출한 보고서가 없습니다.")
             else:
                 my_reports["날짜_dt"] = pd.to_datetime(my_reports["날짜"], errors='coerce')
                 my_reports = my_reports.sort_values(by="날짜_dt", ascending=False).drop(columns=["날짜_dt"])
-                
                 for i, row in my_reports.iterrows():
-                    html_content = f"""
-                    <div class="report-card">
-                        <div class="report-header">🗓️ {row['날짜']} 제출</div>
-                        <div class="report-content">{row['내용']}</div>
-                    """
+                    html_content = f"""<div class="report-card"><div class="report-header">🗓️ {row['날짜']} 제출</div><div class="report-content">{row['내용']}</div>"""
                     if row['답변'] and str(row['답변']).strip() != "":
-                        html_content += f"""
-                        <div class="reply-box">
-                            <div class="reply-title">💌 목회자 피드백</div>
-                            <div>{row['답변']}</div>
-                        </div>
-                        """
+                        html_content += f"""<div class="reply-box"><div class="reply-title">💌 목회자 피드백</div><div>{row['답변']}</div></div>"""
                     html_content += "</div>"
                     st.markdown(html_content, unsafe_allow_html=True)
 
-    # --- 7. 명단 관리 ---
     elif sel_menu == "👥 명단 관리":
         st.subheader("명단 관리")
         st.markdown('<div class="info-tip">💡 <b>Tip:</b> 연락처, 주소 등이 바뀌었을 때 직접 수정할 수 있습니다. <b>음력 생일</b>인 경우, 음력 칸에 <b>O</b>를 적어주세요.</div>', unsafe_allow_html=True)
-
         if is_admin: target = df_members
         else:
             my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
             target = df_members[df_members["소그룹"].isin(my_gs)]
             st.info(f"담당: {', '.join(my_gs)}")
-
-        sort_option = st.radio(
-            "정렬 기준 선택", 
-            ["👨‍👩‍👧‍👦 가족끼리(기본)", "🔤 이름순", "🏘️ 소그룹순", "🎂 생일순"], 
-            horizontal=True
-        )
-
+        sort_option = st.radio("정렬 기준 선택", ["👨‍👩‍👧‍👦 가족끼리(기본)", "🔤 이름순", "🏘️ 소그룹순", "🎂 생일순"], horizontal=True)
         if not target.empty:
             target = target.copy()
             if sort_option == "👨‍👩‍👧‍👦 가족끼리(기본)":
                 target["가족ID_정렬"] = pd.to_numeric(target["가족ID"], errors='coerce').fillna(99999)
                 target = target.sort_values(by=["가족ID_정렬", "이름"])
                 del target["가족ID_정렬"]
-            elif sort_option == "🔤 이름순":
-                target = target.sort_values(by="이름")
-            elif sort_option == "🏘️ 소그룹순":
-                target = target.sort_values(by=["소그룹", "이름"])
-            elif sort_option == "🎂 생일순":
-                target = target.sort_values(by="생일")
-
-        col_conf_mem = {
-            "이름": st.column_config.TextColumn(pinned=True)
-        }
+            elif sort_option == "🔤 이름순": target = target.sort_values(by="이름")
+            elif sort_option == "🏘️ 소그룹순": target = target.sort_values(by=["소그룹", "이름"])
+            elif sort_option == "🎂 생일순": target = target.sort_values(by="생일")
+        col_conf_mem = {"이름": st.column_config.TextColumn(pinned=True)}
         edited = st.data_editor(target, num_rows="dynamic", use_container_width=True, column_config=col_conf_mem)
-        
         if st.button("저장"):
             if is_admin: save_data("members", edited)
             else:
@@ -773,7 +706,6 @@ def main():
                 save_data("members", pd.concat([others, edited], ignore_index=True))
             st.success("저장 완료!"); st.rerun()
 
-    # --- 8. 계정 관리 ---
     elif sel_menu == "🔐 계정 관리" and is_admin:
         st.subheader("계정 관리")
         e_users = st.data_editor(load_data("users"), num_rows="dynamic", use_container_width=True)
@@ -781,4 +713,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
