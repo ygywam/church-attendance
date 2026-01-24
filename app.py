@@ -31,7 +31,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v2.6", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v2.6.1", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -292,6 +292,8 @@ def draw_changelog():
     st.info("이 시스템이 발전해 온 기록입니다.")
 
     logs = [
+        ("v2.6.1", "2026-01-24", "출석체크 정렬 순서 최적화", 
+         "- '출석유무순' 정렬 시, 활동 성도(🟢)가 위쪽, 장기 결석(⚪)이 아래쪽으로 오도록 순서 변경"),
         ("v2.6", "2026-01-24", "출석체크 스마트 정렬 & 개발 로그 추가", 
          "- 출석 기록이 있는 '활동 성도'와 없는 '장기 결석'을 자동 분류하여 정렬\n- 이름 옆에 상태 아이콘(🟢 활동 / ⚪ 장기결석) 추가\n- 업데이트 내역을 확인하는 '개발 로그' 탭 신설"),
         ("v2.5", "2026-01-24", "명단 관리 편의성 개선", 
@@ -320,7 +322,7 @@ def draw_changelog():
         """, unsafe_allow_html=True)
 
 def draw_manual_tab():
-    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v2.6)")
+    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v2.6.1)")
     with st.expander("✅ 1. 출석체크 하는 법"):
         st.markdown("1. **[📋 출석체크]** 메뉴 선택.\n2. 상단 정렬 옵션에서 **'🌱 출석유무순'**을 쓰면 활동 성도가 위로 올라와 편합니다.\n3. 체크 후 **[✅ 출석 저장하기]** 필수.")
     with st.expander("📊 2. 통계 및 보고서"):
@@ -380,7 +382,7 @@ def process_logout(cookie_manager):
 # --- 4. 메인 앱 ---
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
-    st.title("⛪ 회정교회 출석체크 시스템 v2.6")
+    st.title("⛪ 회정교회 출석체크 시스템 v2.6.1")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -480,36 +482,30 @@ def main():
             else: targets = pd.DataFrame()
 
             if not targets.empty:
-                # [v2.6 기능] 스마트 정렬 로직 (출석 기록 확인)
-                # 1. 전체 출석 로그에서 이름 목록 추출
+                # [v2.6] 스마트 정렬: 활동(🟢) vs 장기결석(⚪)
                 active_members = set(df_att["이름"].unique())
-                
-                # 2. targets에 '활동상태' 컬럼 추가 (🟢 / ⚪)
                 targets = targets.copy()
                 targets["상태"] = targets["이름"].apply(lambda x: "🟢 활동" if x in active_members else "⚪ 장기결석")
                 
-                # 3. 정렬 옵션 UI
                 st.markdown('<div class="info-tip">💡 <b>Tip:</b> <b>\'🌱 출석유무순\'</b>을 선택하면 자주 오는 성도님이 위쪽에 표시되어 찾기 쉽습니다.</div>', unsafe_allow_html=True)
                 sort_chk = st.radio("명단 정렬 기준:", ["🌱 출석유무순 (추천)", "👨‍👩‍👧‍👦 가족순", "🔤 이름순"], horizontal=True)
                 
-                # 4. 정렬 실행
                 if sort_chk == "🌱 출석유무순 (추천)":
-                    # 상태(활동->결석) 우선, 그 다음 이름순
-                    targets = targets.sort_values(by=["상태", "이름"], ascending=[True, True]) 
+                    # [v2.6.1 수정] 상태 내림차순(False) -> 🟢(큼)이 ⚪(작음)보다 먼저 옴
+                    targets = targets.sort_values(by=["상태", "이름"], ascending=[False, True]) 
                 elif sort_chk == "👨‍👩‍👧‍👦 가족순":
                     targets["가족ID_정렬"] = pd.to_numeric(targets["가족ID"], errors='coerce').fillna(99999)
                     targets = targets.sort_values(by=["가족ID_정렬", "이름"])
                 elif sort_chk == "🔤 이름순":
                     targets = targets.sort_values(by="이름")
 
-                # 5. 기존 체크 로직 연결
                 current_log = df_att[df_att["날짜"] == str(chk_date)]
                 grid_data = []
                 for _, member in targets.iterrows():
                     row = {
                         "이름": member["이름"], 
                         "소그룹": member["소그룹"], 
-                        "상태": member["상태"] # 상태 컬럼 추가
+                        "상태": member["상태"]
                     } 
                     member_log = current_log[current_log["이름"] == member["이름"]]
                     for col in target_meetings:
@@ -518,10 +514,9 @@ def main():
                 
                 df_grid = pd.DataFrame(grid_data)
                 
-                # 6. 컬럼 설정 (상태 컬럼 표시)
                 col_conf = {
                     "이름": st.column_config.TextColumn("이름", disabled=True, pinned=True),
-                    "상태": st.column_config.TextColumn("상태", disabled=True, width="small"), # 좁게 설정
+                    "상태": st.column_config.TextColumn("상태", disabled=True, width="small"),
                     "소그룹": st.column_config.TextColumn("소그룹", disabled=True)
                 }
                 for col in target_meetings:
@@ -748,7 +743,7 @@ def main():
                 save_data("members", pd.concat([others, edited], ignore_index=True))
             st.success("저장 완료!"); st.rerun()
 
-    # [NEW] 개발 로그 탭 (v2.6)
+    # [NEW] 개발 로그 탭 (v2.6.1)
     elif sel_menu == "🛠️ 개발 로그":
         draw_changelog()
 
