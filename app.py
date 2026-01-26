@@ -284,7 +284,7 @@ def draw_birthday_calendar(df_members):
     html_code += '</div>'
     st.markdown(html_code, unsafe_allow_html=True)
 
-# [수정] 개발 로그 업데이트
+# [수정] 개발 로그 날짜 정확히 반영 (24일: ~v2.6.1 / 26일: v2.7~)
 def draw_changelog():
     st.subheader("🛠️ 개발 및 업데이트 로그")
     st.info("이 시스템이 발전해 온 기록입니다.")
@@ -564,19 +564,15 @@ def main():
             if len(date_range) == 2:
                 start_d, end_d = date_range
                 
-                # [v2.9 추가] 관리자 전용 - 날짜별 통계 (Pivot Table)
+                # [v2.9] 관리자 전용 - 날짜별 통계
                 if is_admin:
                     st.markdown("### 📅 [관리자] 날짜별/모임별 출석 인원")
-                    # 조회 기간 내 데이터 필터링
                     mask_adm = (df_stat["날짜"] >= pd.Timestamp(start_d)) & (df_stat["날짜"] <= pd.Timestamp(end_d))
                     df_stat_filtered = df_stat[mask_adm]
                     
                     if not df_stat_filtered.empty:
-                        # 날짜, 모임명으로 그룹화하여 카운트
                         daily_counts = df_stat_filtered.groupby(['날짜', '모임명']).size().unstack(fill_value=0)
-                        # 날짜 내림차순 정렬 (최신 날짜 위로)
                         daily_counts.sort_index(ascending=False, inplace=True)
-                        # 날짜 포맷 변경 (요일 추가)
                         new_index = [f"{d.strftime('%Y-%m-%d')} {get_day_name(d)}" for d in daily_counts.index]
                         daily_counts.index = new_index
                         st.dataframe(daily_counts, use_container_width=True)
@@ -650,12 +646,12 @@ def main():
             
             if weekly_prayers.empty: st.info("해당 주간에 등록된 기도제목이 없습니다.")
             else:
-                # [v2.9] 관리자 기도제목 카드 뷰 (삭제 기능 포함)
                 for i, r in weekly_prayers.iterrows():
                     with st.container():
                         col_info, col_act = st.columns([8, 1])
                         with col_info:
-                            st.markdown(f"**{r['이름']} ({r['소그룹']})** | {r['날짜'].strftime('%Y-%m-%d')}")
+                            # [수정] 오류 수정: r['날짜']는 문자열이므로 .strftime() 제거
+                            st.markdown(f"**{r['이름']} ({r['소그룹']})** | {r['날짜']}")
                             st.info(r['내용'])
                         with col_act:
                             if st.button("🗑️", key=f"adm_p_del_{i}"):
@@ -745,7 +741,6 @@ def main():
                         st.markdown(f"""<div class="report-card"><div class="report-header">🗓️ {row['날짜']} | 👤 {row['작성자']}</div><div class="report-content">{row['내용']}</div></div>""", unsafe_allow_html=True)
                         new_ans = st.text_area(f"💬 {row['작성자']}님 보고에 대한 피드백 작성", value=row['답변'], key=f"ans_{i}", height=70)
                         
-                        # [v2.9] 관리자 삭제 버튼 추가
                         c_save, c_del = st.columns([1, 1])
                         with c_save:
                             if st.button("답변 저장", key=f"btn_{i}"):
