@@ -31,7 +31,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v2.6.1", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v2.8", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -84,7 +84,6 @@ st.markdown("""
         padding: 15px; margin-bottom: 20px; border-radius: 5px; color: #0d47a1;
         font-size: 16px;
     }
-    /* 개발 로그 스타일 */
     .log-entry {
         border-left: 3px solid #ccc; padding-left: 15px; margin-bottom: 20px;
     }
@@ -178,7 +177,6 @@ def get_target_columns(weekday_idx, group_name):
     elif "주일학교" in g_name or "유초등" in g_name or "유치부" in g_name: return COLS_KIDS
     else: return COLS_ADULT
 
-# [안전한 날짜 파싱]
 def extract_date_numbers(date_str):
     nums = []
     current_num = ""
@@ -292,24 +290,28 @@ def draw_changelog():
     st.info("이 시스템이 발전해 온 기록입니다.")
 
     logs = [
+        ("v2.8", "2026-01-24", "기도제목 수정/삭제 기능 추가", 
+         "- 기도제목도 오타 수정이나 삭제가 가능하도록 기능 개선\n- 소그룹 리더가 자신이 작성한 내역 관리 가능"),
+        ("v2.7", "2026-01-24", "사역 보고 수정/삭제 기능 추가", 
+         "- 본인이 작성한 보고서를 수정하거나 삭제하는 기능 추가\n- 오타 수정 및 중복 게시물 정리 가능"),
         ("v2.6.1", "2026-01-24", "출석체크 정렬 순서 최적화", 
          "- '출석유무순' 정렬 시, 활동 성도(🟢)가 위쪽, 장기 결석(⚪)이 아래쪽으로 오도록 순서 변경"),
         ("v2.6", "2026-01-24", "출석체크 스마트 정렬 & 개발 로그 추가", 
-         "- 출석 기록이 있는 '활동 성도'와 없는 '장기 결석'을 자동 분류하여 정렬\n- 이름 옆에 상태 아이콘(🟢 활동 / ⚪ 장기결석) 추가\n- 업데이트 내역을 확인하는 '개발 로그' 탭 신설"),
+         "- 출석 기록이 있는 '활동 성도'와 없는 '장기 결석'을 자동 분류하여 정렬\n- 이름 옆에 상태 아이콘(🟢 활동 / ⚪ 장기결석) 추가"),
         ("v2.5", "2026-01-24", "명단 관리 편의성 개선", 
          "- 새 가족 등록 시, '다음 추천 가족ID' 자동 계산 및 안내 기능 추가\n- 불필요한 입력 혼선 방지를 위한 안내 문구 강화"),
         ("v2.4", "2026-01-24", "정렬 기능 고도화", 
-         "- 명단 관리에서 '생일순(월일)'과 '연령순(나이)' 정렬을 명확히 분리\n- 다가오는 생일자를 더 쉽게 찾을 수 있도록 개선"),
+         "- 명단 관리에서 '생일순(월일)'과 '연령순(나이)' 정렬을 명확히 분리"),
         ("v2.3", "2026-01-24", "셀프 회원가입 도입", 
-         "- 관리자가 이름만 등록해두면, 소그룹장이 직접 아이디/비번 생성 가능\n- 중복 가입 방지 및 계정 분실 시 재설정 프로세스 정립"),
+         "- 관리자가 이름만 등록해두면, 소그룹장이 직접 아이디/비번 생성 가능"),
         ("v2.2.1", "2026-01-24", "아이폰/사파리 호환성 해결", 
-         "- 구형 모바일 브라우저에서 생일 날짜 처리 시 발생하던 정규표현식 오류 수정\n- 안전한 날짜 파싱 로직 적용"),
+         "- 구형 모바일 브라우저 정규표현식 오류 수정 및 안전한 날짜 파싱 로직 적용"),
         ("v2.2", "2026-01-24", "생일 달력 네비게이션", 
-         "- 이번 달뿐만 아니라 이전 달, 다음 달 생일자도 확인 가능하도록 이동 버튼 추가"),
+         "- 이전 달, 다음 달 생일자 확인 이동 버튼 추가"),
         ("v2.1", "2026-01-24", "사용자 친화적 가이드(Onboarding)", 
-         "- 각 메뉴마다 '친절한 팁(Tip Box)' 추가\n- 상세 사용설명서 탭 디자인 개선"),
+         "- 각 메뉴별 팁(Tip Box) 추가 및 사용설명서 개선"),
         ("v2.0", "2026-01-24", "음력 생일 완벽 지원", 
-         "- 한국형 음력 캘린더 라이브러리 탑재\n- 'O' 표시만으로 매년 달라지는 음력 생일을 자동 계산하여 양력 달력에 표시"),
+         "- 한국형 음력 캘린더 라이브러리 탑재"),
     ]
 
     for ver, date, title, desc in logs:
@@ -322,12 +324,14 @@ def draw_changelog():
         """, unsafe_allow_html=True)
 
 def draw_manual_tab():
-    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v2.6.1)")
+    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v2.8)")
     with st.expander("✅ 1. 출석체크 하는 법"):
         st.markdown("1. **[📋 출석체크]** 메뉴 선택.\n2. 상단 정렬 옵션에서 **'🌱 출석유무순'**을 쓰면 활동 성도가 위로 올라와 편합니다.\n3. 체크 후 **[✅ 출석 저장하기]** 필수.")
     with st.expander("📊 2. 통계 및 보고서"):
-        st.markdown("1. **[📊 통계]**에서 기간별 출석 현황 확인.\n2. **[📨 사역 보고]**에서 목사님과 소통.")
-    with st.expander("🎂 3. 생일 및 명단"):
+        st.markdown("1. **[📊 통계]**에서 기간별 출석 현황 확인.\n2. **[📨 사역 보고]**에서 보고서 작성, **수정, 삭제** 가능.")
+    with st.expander("🙏 3. 기도제목 관리"):
+        st.markdown("1. **[🙏 기도제목]**에서 멤버별 기도제목 기록.\n2. 내용 수정이나 삭제가 필요하면 해당 기록의 **수정/삭제 버튼** 사용.")
+    with st.expander("🎂 4. 생일 및 명단"):
         st.markdown("1. **[🏠 홈]**에서 생일 달력 확인 (음력 자동 변환).\n2. **[👥 명단 관리]**에서 정보 수정 및 가족ID 확인.")
 
 def draw_notice_section(is_admin, current_user_name):
@@ -382,7 +386,7 @@ def process_logout(cookie_manager):
 # --- 4. 메인 앱 ---
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
-    st.title("⛪ 회정교회 출석체크 시스템 v2.6.1")
+    st.title("⛪ 회정교회 출석체크 시스템 v2.8")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -482,7 +486,6 @@ def main():
             else: targets = pd.DataFrame()
 
             if not targets.empty:
-                # [v2.6] 스마트 정렬: 활동(🟢) vs 장기결석(⚪)
                 active_members = set(df_att["이름"].unique())
                 targets = targets.copy()
                 targets["상태"] = targets["이름"].apply(lambda x: "🟢 활동" if x in active_members else "⚪ 장기결석")
@@ -491,7 +494,6 @@ def main():
                 sort_chk = st.radio("명단 정렬 기준:", ["🌱 출석유무순 (추천)", "👨‍👩‍👧‍👦 가족순", "🔤 이름순"], horizontal=True)
                 
                 if sort_chk == "🌱 출석유무순 (추천)":
-                    # [v2.6.1 수정] 상태 내림차순(False) -> 🟢(큼)이 ⚪(작음)보다 먼저 옴
                     targets = targets.sort_values(by=["상태", "이름"], ascending=[False, True]) 
                 elif sort_chk == "👨‍👩‍👧‍👦 가족순":
                     targets["가족ID_정렬"] = pd.to_numeric(targets["가족ID"], errors='coerce').fillna(99999)
@@ -612,6 +614,7 @@ def main():
     elif sel_menu == "🙏 기도제목":
         st.subheader("기도제목 관리")
         st.markdown('<div class="info-tip">💡 <b>Tip:</b> 소그룹원들의 기도제목을 기록하고 히스토리를 관리해보세요.</div>', unsafe_allow_html=True)
+        
         if is_admin:
             st.markdown("### 🗓️ 주간 전체 기도제목 모아보기")
             c1, c2 = st.columns([1, 2])
@@ -643,24 +646,62 @@ def main():
                             st.success("저장됨"); st.rerun()
                 st.divider()
                 st.caption(f"{p_who}님의 히스토리")
-                hist = df_prayer[df_prayer["이름"]==p_who].sort_values("날짜", ascending=False)
+                
+                # [v2.8 수정] 기도제목 리스트 (수정/삭제 추가)
+                # 원본 df_prayer의 인덱스를 유지하면서 필터링
+                hist = df_prayer[df_prayer["이름"] == p_who].sort_values("날짜", ascending=False)
+                
                 for i, r in hist.iterrows():
-                    st.info(f"**{r['날짜']}**: {r['내용']}")
+                    # i는 원본 데이터프레임의 인덱스
+                    if st.session_state.get(f"pray_edit_{i}", False):
+                        # 수정 모드
+                        with st.form(f"pray_form_{i}"):
+                            st.caption(f"📝 기도제목 수정 (No.{i})")
+                            edit_p_date = st.date_input("날짜", pd.to_datetime(r['날짜']))
+                            edit_p_content = st.text_area("내용", r['내용'])
+                            c_save, c_cancel = st.columns(2)
+                            
+                            if c_save.form_submit_button("💾 수정 저장"):
+                                df_prayer.at[i, '날짜'] = str(edit_p_date)
+                                df_prayer.at[i, '내용'] = edit_p_content
+                                save_data("prayer_log", df_prayer)
+                                st.session_state[f"pray_edit_{i}"] = False
+                                st.success("수정되었습니다."); time.sleep(0.5); st.rerun()
+                                
+                            if c_cancel.form_submit_button("취소"):
+                                st.session_state[f"pray_edit_{i}"] = False
+                                st.rerun()
+                    else:
+                        # 조회 모드
+                        col_content, col_btns = st.columns([8, 2])
+                        with col_content:
+                            st.info(f"**{r['날짜']}**: {r['내용']}")
+                        with col_btns:
+                            if st.button("✏️", key=f"p_edit_{i}"):
+                                st.session_state[f"pray_edit_{i}"] = True
+                                st.rerun()
+                            if st.button("🗑️", key=f"p_del_{i}"):
+                                df_prayer = df_prayer.drop(i)
+                                save_data("prayer_log", df_prayer)
+                                st.success("삭제됨"); time.sleep(0.5); st.rerun()
 
     elif sel_menu == "📨 사역 보고":
         st.subheader("📨 소그룹 사역 보고")
         st.markdown('<div class="info-tip">💡 <b>Tip:</b> 매주 소그룹 사역 내용을 적어주세요. 목사님의 답변도 여기서 확인할 수 있습니다.</div>', unsafe_allow_html=True)
         if "답변" not in df_reports.columns: df_reports["답변"] = ""
+        
         if is_admin:
             st.markdown("### 📥 관리자 모드: 보고서 확인 및 답변 작성")
             c1, c2 = st.columns([1, 2])
             r_date_adm = c1.date_input("조회 기준 날짜", datetime.date.today(), key="r_date_adm")
             sun, sat = get_week_range(r_date_adm)
             c2.caption(f"📅 조회 기간: {sun.strftime('%Y-%m-%d')} ~ {sat.strftime('%Y-%m-%d')}")
+            
             df_rep_stat = df_reports.copy()
             df_rep_stat["날짜"] = pd.to_datetime(df_rep_stat["날짜"], errors='coerce')
             mask = (df_rep_stat["날짜"] >= pd.Timestamp(sun)) & (df_rep_stat["날짜"] <= pd.Timestamp(sat))
             weekly_reports = df_reports[mask].sort_values(by="날짜", ascending=False)
+            
             if weekly_reports.empty: st.info("해당 주간에 제출된 보고서가 없습니다.")
             else:
                 for i, row in weekly_reports.iterrows():
@@ -684,17 +725,43 @@ def main():
                         save_data("reports", pd.concat([df_reports, new_r], ignore_index=True))
                         st.success("제출 완료"); st.rerun()
             st.divider()
+            
             my_reports = df_reports[df_reports["작성자"] == current_user_name].copy()
             if my_reports.empty: st.info("제출한 보고서가 없습니다.")
             else:
                 my_reports["날짜_dt"] = pd.to_datetime(my_reports["날짜"], errors='coerce')
-                my_reports = my_reports.sort_values(by="날짜_dt", ascending=False).drop(columns=["날짜_dt"])
-                for i, row in my_reports.iterrows():
-                    html_content = f"""<div class="report-card"><div class="report-header">🗓️ {row['날짜']} 제출</div><div class="report-content">{row['내용']}</div>"""
-                    if row['답변'] and str(row['답변']).strip() != "":
-                        html_content += f"""<div class="reply-box"><div class="reply-title">💌 목회자 피드백</div><div>{row['답변']}</div></div>"""
-                    html_content += "</div>"
-                    st.markdown(html_content, unsafe_allow_html=True)
+                my_reports_sorted = my_reports.sort_values(by="날짜_dt", ascending=False)
+                
+                for i, row in my_reports_sorted.iterrows():
+                    if st.session_state.get(f"edit_mode_{i}", False):
+                        with st.form(f"edit_form_{i}"):
+                            st.caption(f"📝 보고서 수정 (No.{i})")
+                            edit_date = st.date_input("날짜", pd.to_datetime(row['날짜']))
+                            edit_content = st.text_area("내용", row['내용'], height=150)
+                            c_save, c_cancel = st.columns(2)
+                            if c_save.form_submit_button("💾 수정 완료"):
+                                df_reports.at[i, '날짜'] = str(edit_date)
+                                df_reports.at[i, '내용'] = edit_content
+                                save_data("reports", df_reports)
+                                st.session_state[f"edit_mode_{i}"] = False
+                                st.success("수정되었습니다!"); time.sleep(0.5); st.rerun()
+                            if c_cancel.form_submit_button("취소"):
+                                st.session_state[f"edit_mode_{i}"] = False
+                                st.rerun()
+                    else:
+                        html_content = f"""<div class="report-card"><div class="report-header">🗓️ {row['날짜']} 제출</div><div class="report-content">{row['내용']}</div>"""
+                        if row['답변'] and str(row['답변']).strip() != "":
+                            html_content += f"""<div class="reply-box"><div class="reply-title">💌 목회자 피드백</div><div>{row['답변']}</div></div>"""
+                        html_content += "</div>"
+                        st.markdown(html_content, unsafe_allow_html=True)
+                        c_edit, c_del = st.columns([1, 8])
+                        if c_edit.button("✏️ 수정", key=f"btn_edit_{i}"):
+                            st.session_state[f"edit_mode_{i}"] = True
+                            st.rerun()
+                        if c_del.button("🗑️ 삭제", key=f"btn_del_{i}"):
+                            df_reports = df_reports.drop(i)
+                            save_data("reports", df_reports)
+                            st.success("삭제되었습니다."); time.sleep(0.5); st.rerun()
 
     elif sel_menu == "👥 명단 관리":
         st.subheader("명단 관리")
@@ -743,7 +810,7 @@ def main():
                 save_data("members", pd.concat([others, edited], ignore_index=True))
             st.success("저장 완료!"); st.rerun()
 
-    # [NEW] 개발 로그 탭 (v2.6.1)
+    # [NEW] 개발 로그 탭
     elif sel_menu == "🛠️ 개발 로그":
         draw_changelog()
 
