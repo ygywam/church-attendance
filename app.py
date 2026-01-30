@@ -31,7 +31,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v3.2", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v3.0", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -293,18 +293,14 @@ def draw_birthday_calendar(df_members):
     html_code += '</div>'
     st.markdown(html_code, unsafe_allow_html=True)
 
-# [NEW] 개발 로그
+# [수정] 1월 30일 통합 업데이트 로그
 def draw_changelog():
     st.subheader("🛠️ 개발 및 업데이트 로그")
     st.info("이 시스템이 발전해 온 기록입니다.")
 
     logs = [
-        ("v3.2", "2026-01-30", "입력창 오류 해결 (StreamlitAPIException)", 
-         "- **오류 해결:** 기도제목/보고서 저장 시 발생하던 세션 상태 충돌 오류(StreamlitAPIException) 해결\n- **기능 개선:** 폼(Form)의 'clear_on_submit=True' 옵션을 사용하여 저장 후 자동으로 안전하게 입력창이 비워지도록 수정"),
-        ("v3.1", "2026-01-30", "뷰어(Viewer) 권한 수정", 
-         "- 뷰어 계정(viewer)이 '명단 관리' 탭에서 전체 명단을 볼 수 있도록 권한 확대\n- 뷰어의 '담당소그룹'이 '전체'일 경우 발생하는 조회 오류 수정"),
-        ("v3.0", "2026-01-30", "권한 체계 개편 및 뷰어(Viewer) 모드 도입", 
-         "- **제2의 관리자(viewer) 추가:** 출석/통계 확인은 전체 가능하되, 개인적인 기도제목/보고서는 볼 수 없는 안전한 관리자 모드 신설\n- **공동 리더 프라이버시 보호:** 같은 소그룹이라도 '내가 쓴 글'만 보이도록 변경"),
+        ("v3.0", "2026-01-30", "권한 체계 대개편 및 사용성 강화", 
+         "- **제2의 관리자(viewer) 모드:** 출석/통계는 전체 열람 가능하나, 개인적 기록(기도/보고)은 볼 수 없는 보안 관리자 모드 추가\n- **프라이버시 보호 강화:** 같은 소그룹 리더라도 '본인이 작성한' 기도제목/보고서만 보이도록 격리\n- **입력 편의성 개선:** 저장 버튼 클릭 시 입력창 자동 초기화 (중복 입력 방지 및 오류 해결)\n- **UI 개선:** 수정/삭제 버튼 한글화 및 가로 배치"),
         ("v2.9", "2026-01-26", "관리자 기능 강화 및 UX 개선", 
          "- [관리자] 통계 탭에 '날짜별/모임별 출석 인원' 현황표 추가\n- [관리자] 사역 보고 및 기도제목에 대한 '삭제 권한' 부여\n- 입력창 자동 초기화 및 버튼 UI 개선 (✏️수정, 🗑️삭제)"),
         ("v2.8", "2026-01-26", "기도제목 수정/삭제 기능 추가", 
@@ -341,7 +337,7 @@ def draw_changelog():
         """, unsafe_allow_html=True)
 
 def draw_manual_tab():
-    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v3.2)")
+    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v3.0)")
     with st.expander("✅ 1. 출석체크 하는 법"):
         st.markdown("1. **[📋 출석체크]** 메뉴 선택.\n2. 상단 정렬 옵션에서 **'🌱 출석유무순'**을 쓰면 활동 성도가 위로 올라와 편합니다.\n3. 체크 후 **[✅ 출석 저장하기]** 필수.")
     with st.expander("📊 2. 통계 및 보고서"):
@@ -403,7 +399,7 @@ def process_logout(cookie_manager):
 # --- 4. 메인 앱 ---
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
-    st.title("⛪ 회정교회 출석체크 시스템 v3.2")
+    st.title("⛪ 회정교회 출석체크 시스템 v3.0")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -690,11 +686,10 @@ def main():
                 mems = df_members[df_members["소그룹"]==p_grp]["이름"].tolist()
                 p_who = st.selectbox("이름", mems)
                 
-                # [v3.2] clear_on_submit 사용으로 세션 상태 조작 제거
                 with st.expander("새 기도제목 입력", expanded=True):
                     with st.form("p_form", clear_on_submit=True):
                         pd_in = st.date_input("날짜", datetime.date.today())
-                        pc_in = st.text_area("내용")
+                        pc_in = st.text_area("내용", key="p_content_input")
                         if st.form_submit_button("저장"):
                             new_p = pd.DataFrame([{"날짜":str(pd_in), "이름":p_who, "소그룹":p_grp, "내용":pc_in, "작성자":current_user_name}])
                             save_data("prayer_log", pd.concat([df_prayer, new_p], ignore_index=True))
@@ -781,11 +776,10 @@ def main():
                         st.divider()
         else:
             st.markdown(f"### 📂 {current_user_name}님의 보고서")
-            # [v3.2] clear_on_submit 사용
             with st.expander("📝 새 보고서 작성하기", expanded=True):
                 with st.form("report_form", clear_on_submit=True):
                     r_date = st.date_input("작성일", datetime.date.today())
-                    r_content = st.text_area("내용", height=150, placeholder="이번 주 모임 내용과 특이사항을 기록해주세요.")
+                    r_content = st.text_area("내용", height=150, placeholder="이번 주 모임 내용과 특이사항을 기록해주세요.", key="r_content_input")
                     
                     if st.form_submit_button("제출"):
                         new_r = pd.DataFrame([{"날짜": str(r_date), "작성자": current_user_name, "내용": r_content, "답변": ""}])
@@ -844,7 +838,8 @@ def main():
         c1.metric("총 인원", f"{len(df_members)}명"); c2.metric("새 가족 등록 시 추천 ID", f"{next_fam_id}번")
         st.caption("※ 맨 앞의 숫자는 '행 번호'로 자동 생성됩니다. 기존 가족은 해당 ID를 확인하여 동일하게 입력하세요.")
         
-        if is_admin: target = df_members
+        if is_admin or is_viewer: 
+            target = df_members
         else:
             my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
             target = df_members[df_members["소그룹"].isin(my_gs)]
@@ -873,7 +868,8 @@ def main():
         col_conf_mem = {"이름": st.column_config.TextColumn(pinned=True)}
         edited = st.data_editor(target, num_rows="dynamic", use_container_width=True, column_config=col_conf_mem)
         if st.button("저장"):
-            if is_admin: save_data("members", edited)
+            if is_admin or is_viewer: 
+                save_data("members", edited)
             else:
                 my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
                 mask = df_members["소그룹"].isin(my_gs)
