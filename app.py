@@ -31,7 +31,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v3.0", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v3.1", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -284,14 +284,16 @@ def draw_birthday_calendar(df_members):
     html_code += '</div>'
     st.markdown(html_code, unsafe_allow_html=True)
 
-# [수정] 개발 로그 날짜 현행화 (2026-01-30)
+# [수정] 개발 로그 (26일 내용은 이전과 동일)
 def draw_changelog():
     st.subheader("🛠️ 개발 및 업데이트 로그")
     st.info("이 시스템이 발전해 온 기록입니다.")
 
     logs = [
+        ("v3.1", "2026-01-30", "뷰어(Viewer) 권한 수정", 
+         "- 뷰어 계정(viewer)이 '명단 관리' 탭에서 전체 명단을 볼 수 있도록 권한 확대\n- 뷰어의 '담당소그룹'이 '전체'일 경우 발생하는 조회 오류 수정"),
         ("v3.0", "2026-01-30", "권한 체계 개편 및 뷰어(Viewer) 모드 도입", 
-         "- **제2의 관리자(viewer) 추가:** 출석/통계 확인은 전체 가능하되, 개인적인 기도제목/보고서는 볼 수 없는 안전한 관리자 모드 신설\n- **공동 리더 프라이버시 보호:** 같은 소그룹이라도 '내가 쓴 글'만 보이도록 변경하여 상호 보안 강화"),
+         "- **제2의 관리자(viewer) 추가:** 출석/통계 확인은 전체 가능하되, 개인적인 기도제목/보고서는 볼 수 없는 안전한 관리자 모드 신설\n- **공동 리더 프라이버시 보호:** 같은 소그룹이라도 '내가 쓴 글'만 보이도록 변경"),
         ("v2.9", "2026-01-26", "관리자 기능 강화 및 UX 개선", 
          "- [관리자] 통계 탭에 '날짜별/모임별 출석 인원' 현황표 추가\n- [관리자] 사역 보고 및 기도제목에 대한 '삭제 권한' 부여\n- 입력창 자동 초기화 및 버튼 UI 개선 (✏️수정, 🗑️삭제)"),
         ("v2.8", "2026-01-26", "기도제목 수정/삭제 기능 추가", 
@@ -328,7 +330,7 @@ def draw_changelog():
         """, unsafe_allow_html=True)
 
 def draw_manual_tab():
-    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v3.0)")
+    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v3.1)")
     with st.expander("✅ 1. 출석체크 하는 법"):
         st.markdown("1. **[📋 출석체크]** 메뉴 선택.\n2. 상단 정렬 옵션에서 **'🌱 출석유무순'**을 쓰면 활동 성도가 위로 올라와 편합니다.\n3. 체크 후 **[✅ 출석 저장하기]** 필수.")
     with st.expander("📊 2. 통계 및 보고서"):
@@ -390,7 +392,7 @@ def process_logout(cookie_manager):
 # --- 4. 메인 앱 ---
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
-    st.title("⛪ 회정교회 출석체크 시스템 v3.0")
+    st.title("⛪ 회정교회 출석체크 시스템 v3.1")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -562,6 +564,7 @@ def main():
 
         if df_att.empty: st.info("데이터가 없습니다.")
         else:
+            if "날짜" not in df_att.columns: df_att["날짜"] = ""
             df_stat = df_att.copy()
             df_stat["날짜"] = pd.to_datetime(df_stat["날짜"], errors='coerce')
             
@@ -573,7 +576,6 @@ def main():
             if len(date_range) == 2:
                 start_d, end_d = date_range
                 
-                # [v3.0] 관리자와 뷰어(viewer) 모두 날짜별 통계 확인 가능
                 if is_admin or is_viewer:
                     st.markdown("### 📅 [관리자/뷰어] 날짜별/모임별 출석 인원")
                     mask_adm = (df_stat["날짜"] >= pd.Timestamp(start_d)) & (df_stat["날짜"] <= pd.Timestamp(end_d))
@@ -691,12 +693,9 @@ def main():
                 st.divider()
                 st.caption(f"{p_who}님의 히스토리")
                 
-                # [v3.0 수정] 작성자 본인 것만 보이도록 필터링
-                # viewer나 일반 user나 로직은 동일 (본인이 쓴 것만)
-                
-                if is_viewer: # 뷰어는 쓴 게 없으므로 아무것도 안 보임 (의도된 동작)
+                if is_viewer: 
                     my_prayers = df_prayer[(df_prayer["이름"] == p_who) & (df_prayer["작성자"] == current_user_name)]
-                else: # 일반 유저도 본인이 쓴 것만
+                else: 
                     my_prayers = df_prayer[(df_prayer["이름"] == p_who) & (df_prayer["작성자"] == current_user_name)]
                 
                 hist = my_prayers.sort_values("날짜", ascending=False)
@@ -784,7 +783,6 @@ def main():
                         st.success("제출 완료"); time.sleep(0.5); st.rerun()
             st.divider()
             
-            # [v3.0] 내 보고서만 보기 (작성자 필터링)
             my_reports = df_reports[df_reports["작성자"] == current_user_name].copy()
             
             if my_reports.empty: st.info("제출한 보고서가 없습니다.")
@@ -836,7 +834,9 @@ def main():
         c1.metric("총 인원", f"{len(df_members)}명"); c2.metric("새 가족 등록 시 추천 ID", f"{next_fam_id}번")
         st.caption("※ 맨 앞의 숫자는 '행 번호'로 자동 생성됩니다. 기존 가족은 해당 ID를 확인하여 동일하게 입력하세요.")
         
-        if is_admin: target = df_members
+        # [v3.1 수정] 뷰어도 명단 전체 보기 및 저장 가능 (관리자와 동일 권한)
+        if is_admin or is_viewer: 
+            target = df_members
         else:
             my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
             target = df_members[df_members["소그룹"].isin(my_gs)]
@@ -865,7 +865,9 @@ def main():
         col_conf_mem = {"이름": st.column_config.TextColumn(pinned=True)}
         edited = st.data_editor(target, num_rows="dynamic", use_container_width=True, column_config=col_conf_mem)
         if st.button("저장"):
-            if is_admin: save_data("members", edited)
+            # [v3.1 수정] 뷰어도 관리자와 동일하게 전체 저장 권한 부여
+            if is_admin or is_viewer: 
+                save_data("members", edited)
             else:
                 my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
                 mask = df_members["소그룹"].isin(my_gs)
