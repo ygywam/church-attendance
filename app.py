@@ -31,7 +31,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v2.9", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v3.0", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -284,12 +284,14 @@ def draw_birthday_calendar(df_members):
     html_code += '</div>'
     st.markdown(html_code, unsafe_allow_html=True)
 
-# [수정] 개발 로그 날짜 정확히 반영 (24일: ~v2.6.1 / 26일: v2.7~)
+# [수정] 개발 로그 날짜 현행화 (2026-01-30)
 def draw_changelog():
     st.subheader("🛠️ 개발 및 업데이트 로그")
     st.info("이 시스템이 발전해 온 기록입니다.")
 
     logs = [
+        ("v3.0", "2026-01-30", "권한 체계 개편 및 뷰어(Viewer) 모드 도입", 
+         "- **제2의 관리자(viewer) 추가:** 출석/통계 확인은 전체 가능하되, 개인적인 기도제목/보고서는 볼 수 없는 안전한 관리자 모드 신설\n- **공동 리더 프라이버시 보호:** 같은 소그룹이라도 '내가 쓴 글'만 보이도록 변경하여 상호 보안 강화"),
         ("v2.9", "2026-01-26", "관리자 기능 강화 및 UX 개선", 
          "- [관리자] 통계 탭에 '날짜별/모임별 출석 인원' 현황표 추가\n- [관리자] 사역 보고 및 기도제목에 대한 '삭제 권한' 부여\n- 입력창 자동 초기화 및 버튼 UI 개선 (✏️수정, 🗑️삭제)"),
         ("v2.8", "2026-01-26", "기도제목 수정/삭제 기능 추가", 
@@ -326,13 +328,13 @@ def draw_changelog():
         """, unsafe_allow_html=True)
 
 def draw_manual_tab():
-    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v2.9)")
+    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v3.0)")
     with st.expander("✅ 1. 출석체크 하는 법"):
         st.markdown("1. **[📋 출석체크]** 메뉴 선택.\n2. 상단 정렬 옵션에서 **'🌱 출석유무순'**을 쓰면 활동 성도가 위로 올라와 편합니다.\n3. 체크 후 **[✅ 출석 저장하기]** 필수.")
     with st.expander("📊 2. 통계 및 보고서"):
-        st.markdown("1. **[📊 통계]**에서 기간별 출석 현황 확인.\n2. **[📨 사역 보고]**에서 보고서 작성, **수정, 삭제** 가능.")
+        st.markdown("1. **[📊 통계]**에서 기간별 출석 현황 확인.\n2. **[📨 사역 보고]**에서 보고서 작성 (본인 작성 내용만 보임).")
     with st.expander("🙏 3. 기도제목 관리"):
-        st.markdown("1. **[🙏 기도제목]**에서 멤버별 기도제목 기록.\n2. 내용 수정이나 삭제가 필요하면 해당 기록의 **수정/삭제 버튼** 사용.")
+        st.markdown("1. **[🙏 기도제목]**에서 멤버별 기도제목 기록.\n2. 공동 리더가 있어도 **내가 쓴 기록만** 보입니다. (프라이버시 보호)")
     with st.expander("🎂 4. 생일 및 명단"):
         st.markdown("1. **[🏠 홈]**에서 생일 달력 확인 (음력 자동 변환).\n2. **[👥 명단 관리]**에서 정보 수정 및 가족ID 확인.")
 
@@ -388,7 +390,7 @@ def process_logout(cookie_manager):
 # --- 4. 메인 앱 ---
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
-    st.title("⛪ 회정교회 출석체크 시스템 v2.9")
+    st.title("⛪ 회정교회 출석체크 시스템 v3.0")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -437,7 +439,11 @@ def main():
 
     current_user = st.session_state["user_info"]
     current_user_name = current_user["이름"]
-    is_admin = (current_user["역할"] == "admin")
+    
+    # [v3.0] 권한 구분 로직
+    user_role = str(current_user.get("역할", "")).lower().strip()
+    is_admin = (user_role == "admin")
+    is_viewer = (user_role == "viewer") # 제2의 관리자
     
     df_members = load_data("members")
     df_att = load_data("attendance_log")
@@ -471,7 +477,10 @@ def main():
         c1.info(f"선택일: {chk_date.strftime('%Y-%m-%d')} ({day_str})")
 
         all_grps = sorted(df_members["소그룹"].unique())
-        if is_admin: grp = c2.selectbox("소그룹(관리자)", ["전체 보기"] + all_grps)
+        
+        # [v3.0] 뷰어(viewer)도 전체 소그룹을 볼 수 있음
+        if is_admin or is_viewer: 
+            grp = c2.selectbox("소그룹(관리자/뷰어)", ["전체 보기"] + all_grps)
         else:
             my_grps = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
             if len(my_grps) > 1: grp = c2.selectbox("소그룹 선택", my_grps)
@@ -564,9 +573,9 @@ def main():
             if len(date_range) == 2:
                 start_d, end_d = date_range
                 
-                # [v2.9] 관리자 전용 - 날짜별 통계
-                if is_admin:
-                    st.markdown("### 📅 [관리자] 날짜별/모임별 출석 인원")
+                # [v3.0] 관리자와 뷰어(viewer) 모두 날짜별 통계 확인 가능
+                if is_admin or is_viewer:
+                    st.markdown("### 📅 [관리자/뷰어] 날짜별/모임별 출석 인원")
                     mask_adm = (df_stat["날짜"] >= pd.Timestamp(start_d)) & (df_stat["날짜"] <= pd.Timestamp(end_d))
                     df_stat_filtered = df_stat[mask_adm]
                     
@@ -578,7 +587,7 @@ def main():
                         st.dataframe(daily_counts, use_container_width=True)
                         st.divider()
 
-                if is_admin:
+                if is_admin or is_viewer:
                     all_g = sorted(df_att["소그룹"].unique())
                     s_grp = c2.selectbox("그룹 선택", ["전체 보기"] + all_g)
                 else:
@@ -650,7 +659,6 @@ def main():
                     with st.container():
                         col_info, col_act = st.columns([8, 1])
                         with col_info:
-                            # [수정] 오류 수정: r['날짜']는 문자열이므로 .strftime() 제거
                             st.markdown(f"**{r['이름']} ({r['소그룹']})** | {r['날짜']}")
                             st.info(r['내용'])
                         with col_act:
@@ -683,7 +691,15 @@ def main():
                 st.divider()
                 st.caption(f"{p_who}님의 히스토리")
                 
-                hist = df_prayer[df_prayer["이름"] == p_who].sort_values("날짜", ascending=False)
+                # [v3.0 수정] 작성자 본인 것만 보이도록 필터링
+                # viewer나 일반 user나 로직은 동일 (본인이 쓴 것만)
+                
+                if is_viewer: # 뷰어는 쓴 게 없으므로 아무것도 안 보임 (의도된 동작)
+                    my_prayers = df_prayer[(df_prayer["이름"] == p_who) & (df_prayer["작성자"] == current_user_name)]
+                else: # 일반 유저도 본인이 쓴 것만
+                    my_prayers = df_prayer[(df_prayer["이름"] == p_who) & (df_prayer["작성자"] == current_user_name)]
+                
+                hist = my_prayers.sort_values("날짜", ascending=False)
                 
                 for i, r in hist.iterrows():
                     if st.session_state.get(f"pray_edit_{i}", False):
@@ -768,7 +784,9 @@ def main():
                         st.success("제출 완료"); time.sleep(0.5); st.rerun()
             st.divider()
             
+            # [v3.0] 내 보고서만 보기 (작성자 필터링)
             my_reports = df_reports[df_reports["작성자"] == current_user_name].copy()
+            
             if my_reports.empty: st.info("제출한 보고서가 없습니다.")
             else:
                 my_reports["날짜_dt"] = pd.to_datetime(my_reports["날짜"], errors='coerce')
