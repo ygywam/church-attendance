@@ -31,7 +31,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v3.1", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v3.2", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -132,21 +132,30 @@ def get_worksheet(worksheet_name):
 def load_data(sheet_name):
     ws = get_worksheet(sheet_name)
     if not ws: return pd.DataFrame()
+    
     data = ws.get_all_records()
+    
+    expected_cols = {
+        "members": ["이름", "성별", "생일", "음력", "전화번호", "주소", "가족ID", "소그룹", "비고"],
+        "attendance_log": ["날짜", "모임명", "이름", "소그룹", "출석여부"],
+        "users": ["아이디", "비밀번호", "이름", "역할", "담당소그룹"],
+        "prayer_log": ["날짜", "이름", "소그룹", "내용", "작성자"],
+        "notices": ["날짜", "내용", "작성자"],
+        "reports": ["날짜", "작성자", "내용", "답변"]
+    }
+    
     if not data:
-        if sheet_name == "members":
-            return pd.DataFrame(columns=["이름", "성별", "생일", "음력", "전화번호", "주소", "가족ID", "소그룹", "비고"])
-        elif sheet_name == "attendance_log":
-            return pd.DataFrame(columns=["날짜", "모임명", "이름", "소그룹", "출석여부"])
-        elif sheet_name == "users":
-            return pd.DataFrame(columns=["아이디", "비밀번호", "이름", "역할", "담당소그룹"])
-        elif sheet_name == "prayer_log":
-            return pd.DataFrame(columns=["날짜", "이름", "소그룹", "내용", "작성자"])
-        elif sheet_name == "notices":
-            return pd.DataFrame(columns=["날짜", "내용", "작성자"])
-        elif sheet_name == "reports":
-            return pd.DataFrame(columns=["날짜", "작성자", "내용", "답변"])
-    return pd.DataFrame(data).astype(str)
+        cols = expected_cols.get(sheet_name, [])
+        return pd.DataFrame(columns=cols)
+    
+    df = pd.DataFrame(data).astype(str)
+    
+    if sheet_name in expected_cols:
+        for col in expected_cols[sheet_name]:
+            if col not in df.columns:
+                df[col] = "" 
+                
+    return df
 
 def save_data(sheet_name, df):
     ws = get_worksheet(sheet_name)
@@ -284,12 +293,14 @@ def draw_birthday_calendar(df_members):
     html_code += '</div>'
     st.markdown(html_code, unsafe_allow_html=True)
 
-# [수정] 개발 로그 (26일 내용은 이전과 동일)
+# [NEW] 개발 로그
 def draw_changelog():
     st.subheader("🛠️ 개발 및 업데이트 로그")
     st.info("이 시스템이 발전해 온 기록입니다.")
 
     logs = [
+        ("v3.2", "2026-01-30", "입력창 오류 해결 (StreamlitAPIException)", 
+         "- **오류 해결:** 기도제목/보고서 저장 시 발생하던 세션 상태 충돌 오류(StreamlitAPIException) 해결\n- **기능 개선:** 폼(Form)의 'clear_on_submit=True' 옵션을 사용하여 저장 후 자동으로 안전하게 입력창이 비워지도록 수정"),
         ("v3.1", "2026-01-30", "뷰어(Viewer) 권한 수정", 
          "- 뷰어 계정(viewer)이 '명단 관리' 탭에서 전체 명단을 볼 수 있도록 권한 확대\n- 뷰어의 '담당소그룹'이 '전체'일 경우 발생하는 조회 오류 수정"),
         ("v3.0", "2026-01-30", "권한 체계 개편 및 뷰어(Viewer) 모드 도입", 
@@ -330,7 +341,7 @@ def draw_changelog():
         """, unsafe_allow_html=True)
 
 def draw_manual_tab():
-    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v3.1)")
+    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v3.2)")
     with st.expander("✅ 1. 출석체크 하는 법"):
         st.markdown("1. **[📋 출석체크]** 메뉴 선택.\n2. 상단 정렬 옵션에서 **'🌱 출석유무순'**을 쓰면 활동 성도가 위로 올라와 편합니다.\n3. 체크 후 **[✅ 출석 저장하기]** 필수.")
     with st.expander("📊 2. 통계 및 보고서"):
@@ -392,7 +403,7 @@ def process_logout(cookie_manager):
 # --- 4. 메인 앱 ---
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
-    st.title("⛪ 회정교회 출석체크 시스템 v3.1")
+    st.title("⛪ 회정교회 출석체크 시스템 v3.2")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -445,7 +456,7 @@ def main():
     # [v3.0] 권한 구분 로직
     user_role = str(current_user.get("역할", "")).lower().strip()
     is_admin = (user_role == "admin")
-    is_viewer = (user_role == "viewer") # 제2의 관리자
+    is_viewer = (user_role == "viewer") 
     
     df_members = load_data("members")
     df_att = load_data("attendance_log")
@@ -480,7 +491,6 @@ def main():
 
         all_grps = sorted(df_members["소그룹"].unique())
         
-        # [v3.0] 뷰어(viewer)도 전체 소그룹을 볼 수 있음
         if is_admin or is_viewer: 
             grp = c2.selectbox("소그룹(관리자/뷰어)", ["전체 보기"] + all_grps)
         else:
@@ -680,14 +690,14 @@ def main():
                 mems = df_members[df_members["소그룹"]==p_grp]["이름"].tolist()
                 p_who = st.selectbox("이름", mems)
                 
+                # [v3.2] clear_on_submit 사용으로 세션 상태 조작 제거
                 with st.expander("새 기도제목 입력", expanded=True):
-                    with st.form("p_form"):
+                    with st.form("p_form", clear_on_submit=True):
                         pd_in = st.date_input("날짜", datetime.date.today())
-                        pc_in = st.text_area("내용", key="p_content_input")
+                        pc_in = st.text_area("내용")
                         if st.form_submit_button("저장"):
                             new_p = pd.DataFrame([{"날짜":str(pd_in), "이름":p_who, "소그룹":p_grp, "내용":pc_in, "작성자":current_user_name}])
                             save_data("prayer_log", pd.concat([df_prayer, new_p], ignore_index=True))
-                            st.session_state["p_content_input"] = ""
                             st.success("저장됨"); time.sleep(0.5); st.rerun()
                             
                 st.divider()
@@ -771,15 +781,15 @@ def main():
                         st.divider()
         else:
             st.markdown(f"### 📂 {current_user_name}님의 보고서")
+            # [v3.2] clear_on_submit 사용
             with st.expander("📝 새 보고서 작성하기", expanded=True):
-                with st.form("report_form"):
+                with st.form("report_form", clear_on_submit=True):
                     r_date = st.date_input("작성일", datetime.date.today())
-                    r_content = st.text_area("내용", height=150, placeholder="이번 주 모임 내용과 특이사항을 기록해주세요.", key="r_content_input")
+                    r_content = st.text_area("내용", height=150, placeholder="이번 주 모임 내용과 특이사항을 기록해주세요.")
                     
                     if st.form_submit_button("제출"):
                         new_r = pd.DataFrame([{"날짜": str(r_date), "작성자": current_user_name, "내용": r_content, "답변": ""}])
                         save_data("reports", pd.concat([df_reports, new_r], ignore_index=True))
-                        st.session_state["r_content_input"] = ""
                         st.success("제출 완료"); time.sleep(0.5); st.rerun()
             st.divider()
             
@@ -834,9 +844,7 @@ def main():
         c1.metric("총 인원", f"{len(df_members)}명"); c2.metric("새 가족 등록 시 추천 ID", f"{next_fam_id}번")
         st.caption("※ 맨 앞의 숫자는 '행 번호'로 자동 생성됩니다. 기존 가족은 해당 ID를 확인하여 동일하게 입력하세요.")
         
-        # [v3.1 수정] 뷰어도 명단 전체 보기 및 저장 가능 (관리자와 동일 권한)
-        if is_admin or is_viewer: 
-            target = df_members
+        if is_admin: target = df_members
         else:
             my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
             target = df_members[df_members["소그룹"].isin(my_gs)]
@@ -865,9 +873,7 @@ def main():
         col_conf_mem = {"이름": st.column_config.TextColumn(pinned=True)}
         edited = st.data_editor(target, num_rows="dynamic", use_container_width=True, column_config=col_conf_mem)
         if st.button("저장"):
-            # [v3.1 수정] 뷰어도 관리자와 동일하게 전체 저장 권한 부여
-            if is_admin or is_viewer: 
-                save_data("members", edited)
+            if is_admin: save_data("members", edited)
             else:
                 my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
                 mask = df_members["소그룹"].isin(my_gs)
