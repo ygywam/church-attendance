@@ -31,7 +31,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v3.5", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v3.6", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -309,10 +309,12 @@ def draw_changelog():
     st.info("이 시스템이 발전해 온 기록입니다.")
 
     logs = [
+        ("v3.6", "2026-07-05", "데이터 전수 삭제 방지 안전 잠금장치(Safety Lock) 도입", 
+         "- **실수 방지:** 무분별한 덮어쓰기 및 터치 실수를 원천 방지하기 위해 모든 관리자/유저 삭제 버튼에 2단계 확정 팝오버(Popover) 도입\n- **보안 가드:** 출석 저장, 명단 수정, 상세 통계 변경 시 '안전 확인 체크박스'를 체크해야만 최종 저장 버튼이 활성화되도록 UX 고도화"),
         ("v3.5", "2026-06-05", "정기 시스템 보완 및 안점 점검", 
-         "- **안정성 강화:** 상반기 출석 누적 데이터 연동 프로세스 최적화 및 오류 복구\n- 개발 내역 및 배포 안정성 재점검 완료"),
+         "- 상반기 출석 누적 데이터 연동 프로세스 최적화 및 오류 복구\n- 개발 내역 및 배포 안정성 재점검 완료"),
         ("v3.4", "2026-04-23", "시트 제목행 틀 고정 자동화", 
-         "- **오류 방지:** 데이터를 저장할 때마다 구글 시트의 1행(제목)을 자동으로 '틀 고정' 하도록 개선\n- 스프레드시트에서 수동으로 정렬 시 제목이 아래로 밀리는 현상 완벽 차단"),
+         "- 데이터를 저장할 때마다 구글 시트의 1행(제목)을 자동으로 '틀 고정' 하도록 개선\n- 스프레드시트에서 수동으로 정렬 시 제목이 아래로 밀리는 현상 완벽 차단"),
         ("v3.3", "2026-02-18", "시트 제목행 오류 방어막 추가", 
          "- 구글 시트 열 삭제/이동 시 발생하는 예외 처리 추가 및 친절한 에러 안내 적용"),
         ("v3.2", "2026-01-30", "입력창 오류 해결 (StreamlitAPIException)", 
@@ -322,29 +324,7 @@ def draw_changelog():
         ("v3.0", "2026-01-30", "권한 체계 개편 및 뷰어(Viewer) 모드 도입", 
          "- 뷰어 계정 추가 및 공동 리더 프라이버시(작성자 기준 필터링) 보호 강화"),
         ("v2.9", "2026-01-26", "관리자 기능 강화 및 UX 개선", 
-         "- [관리자] 날짜별 통계 및 사역보고/기도제목 삭제 권한 부여"),
-        ("v2.8", "2026-01-26", "기도제목 수정/삭제 기능 추가", 
-         "- 소그룹 리더의 기도제목 내역 관리 가능"),
-        ("v2.7", "2026-01-26", "사역 보고 수정/삭제 기능 추가", 
-         "- 본인 작성 보고서 수정/삭제 기능 추가"),
-        ("v2.6.1", "2026-01-24", "출석체크 정렬 순서 최적화", 
-         "- '출석유무순' 정렬 시 활동 성도(🟢) 상단 배치"),
-        ("v2.6", "2026-01-24", "출석체크 스마트 정렬 & 개발 로그 추가", 
-         "- 활동 성도/장기 결석 자동 분류 및 아이콘 상태 표시"),
-        ("v2.5", "2026-01-24", "명단 관리 편의성 개선", 
-         "- 추천 가족ID 자동 계산 및 입력 혼선 방지 안내"),
-        ("v2.4", "2026-01-24", "정렬 기능 고도화", 
-         "- 명단 관리에서 '생일순'과 '연령순' 정렬 분리"),
-        ("v2.3", "2026-01-24", "셀프 회원가입 도입", 
-         "- 소그룹장 직접 계정 생성 및 중복 가입 방지"),
-        ("v2.2.1", "2026-01-24", "아이폰/사파리 호환성 해결", 
-         "- 구형 모바일 브라우저 날짜 정규표현식 오류 수정"),
-        ("v2.2", "2026-01-24", "생일 달력 네비게이션", 
-         "- 생일 달력 이전/다음 달 이동 기능 추가"),
-        ("v2.1", "2026-01-24", "사용자 친화적 가이드(Onboarding)", 
-         "- 각 메뉴마다 '친절한 팁(Tip Box)' 추가\n- 상세 사용설명서 탭 디자인 개선"),
-        ("v2.0", "2026-01-24", "음력 생일 완벽 지원", 
-         "- 한국형 음력 캘린더 자동 변환 시스템 탑재"),
+         "- [관리자] 통계 탭에 '날짜별/모임별 출석 인원' 현황표 추가\n- [관리자] 사역 보고 및 기도제목에 대한 '삭제 권한' 부여"),
     ]
 
     for ver, date, title, desc in logs:
@@ -357,15 +337,13 @@ def draw_changelog():
         """, unsafe_allow_html=True)
 
 def draw_manual_tab():
-    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v3.5)")
+    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v3.6)")
     with st.expander("✅ 1. 출석체크 하는 법"):
-        st.markdown("1. **[📋 출석체크]** 메뉴 선택.\n2. 상단 정렬 옵션에서 **'🌱 출석유무순'**을 쓰면 활동 성도가 위로 올라와 편합니다.\n3. 체크 후 **[✅ 출석 저장하기]** 필수.")
+        st.markdown("1. **[📋 출석체크]** 메뉴 선택.\n2. 상단 정렬 옵션에서 **'🌱 출석유무순'**을 쓰면 활동 성도가 위로 올라와 편합니다.\n3. 변경 사항을 체크한 후 하단 **안전 가드 체크박스**를 선택해야 저장 버튼이 활성화됩니다.")
     with st.expander("📊 2. 통계 및 보고서"):
-        st.markdown("1. **[📊 통계]**에서 기간별 출석 현황 확인.\n2. **[📨 사역 보고]**에서 보고서 작성 (본인 작성 내용만 보임).")
+        st.markdown("1. **[📊 통계]**에서 기간별 출석 현황 확인.\n2. **[📨 사역 보고]**에서 보고서 작성 및 본인 내용 수정/삭제 가능.")
     with st.expander("🙏 3. 기도제목 관리"):
-        st.markdown("1. **[🙏 기도제목]**에서 멤버별 기도제목 기록.\n2. 공동 리더가 있어도 **내가 쓴 기록만** 보입니다. (프라이버시 보호)")
-    with st.expander("🎂 4. 생일 및 명단"):
-        st.markdown("1. **[🏠 홈]**에서 생일 달력 확인 (음력 자동 변환).\n2. **[👥 명단 관리]**에서 정보 수정 및 가족ID 확인.")
+        st.markdown("1. **[🙏 기도제목]**에서 멤버별 기도제목 기록.\n2. 삭제가 필요한 경우 오클릭 방지를 위한 **2단계 팝업**을 통해 안전하게 삭제합니다.")
 
 def draw_notice_section(is_admin, current_user_name):
     df_notices = load_data("notices")
@@ -419,7 +397,7 @@ def process_logout(cookie_manager):
 # --- 4. 메인 앱 ---
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
-    st.title("⛪ 회정교회 출석체크 시스템 v3.5")
+    st.title("⛪ 회정교회 출석체크 시스템 v3.6")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -469,7 +447,6 @@ def main():
     current_user = st.session_state["user_info"]
     current_user_name = current_user["이름"]
     
-    # [v3.0] 권한 구분 로직
     user_role = str(current_user.get("역할", "")).lower().strip()
     is_admin = (user_role == "admin")
     is_viewer = (user_role == "viewer") 
@@ -566,23 +543,28 @@ def main():
                 st.success(f"📌 {grp} / {', '.join(target_meetings)} 출석을 체크합니다.")
                 edited_df = st.data_editor(df_grid, column_config=col_conf, hide_index=True, use_container_width=True)
 
-                if st.button("✅ 출석 저장하기", use_container_width=True):
-                    mask_date = df_att["날짜"] == str(chk_date)
-                    mask_grp = df_att["소그룹"] == grp if grp != "전체 보기" else True
-                    mask_meeting = df_att["모임명"].isin(target_meetings)
-                    df_clean = df_att[~(mask_date & mask_grp & mask_meeting)]
-                    new_records = []
-                    for _, row in edited_df.iterrows():
-                        name = row["이름"]
-                        u_grp = row["소그룹"]
-                        for col in target_meetings:
-                            if row[col]:
-                                new_records.append({
-                                    "날짜": str(chk_date), "모임명": col, "이름": name, "소그룹": u_grp, "출석여부": "출석"
-                                })
-                    final_df = pd.concat([df_clean, pd.DataFrame(new_records)], ignore_index=True)
-                    save_data("attendance_log", final_df)
-                    st.success(f"✅ {chk_date} ({day_str}) 출석 저장 완료!"); st.rerun()
+                # [v3.6 안전 잠금장치 추가]
+                col_btn, col_chk = st.columns([1, 2])
+                with col_chk:
+                    confirm_att = st.checkbox("⚠️ 입력한 출석 정보가 정확하며, 데이터베이스 저장을 확정합니다.", key="att_save_confirm")
+                with col_btn:
+                    if st.button("✅ 출석 저장하기", disabled=not confirm_att, use_container_width=True):
+                        mask_date = df_att["날짜"] == str(chk_date)
+                        mask_grp = df_att["소그룹"] == grp if grp != "전체 보기" else True
+                        mask_meeting = df_att["모임명"].isin(target_meetings)
+                        df_clean = df_att[~(mask_date & mask_grp & mask_meeting)]
+                        new_records = []
+                        for _, row in edited_df.iterrows():
+                            name = row["이름"]
+                            u_grp = row["소그룹"]
+                            for col in target_meetings:
+                                if row[col]:
+                                    new_records.append({
+                                        "날짜": str(chk_date), "모임명": col, "이름": name, "소그룹": u_grp, "출석여부": "출석"
+                                    })
+                        final_df = pd.concat([df_clean, pd.DataFrame(new_records)], ignore_index=True)
+                        save_data("attendance_log", final_df)
+                        st.success(f"✅ {chk_date} ({day_str}) 출석 저장 완료!"); st.rerun()
 
     elif sel_menu == "📊 통계":
         st.subheader("📊 출석 누적 현황 및 상세 조회")
@@ -650,20 +632,25 @@ def main():
                             edit_target = person_log[["날짜", "모임명", "소그룹"]]
                             edited_log = st.data_editor(edit_target, num_rows="dynamic", use_container_width=True, key="stat_editor")
                             
-                            if st.button("💾 수정사항 저장하기", use_container_width=True):
-                                df_rest = df_att[df_att["이름"] != selected_name]
-                                new_person_data = []
-                                for _, row in edited_log.iterrows():
-                                    if row["날짜"] and row["모임명"]:
-                                        clean_date = row["날짜"].split(" ")[0]
-                                        new_person_data.append({
-                                            "날짜": clean_date, "모임명": row["모임명"],
-                                            "이름": selected_name, "소그룹": row["소그룹"],
-                                            "출석여부": "출석"
-                                        })
-                                final_df = pd.concat([df_rest, pd.DataFrame(new_person_data)], ignore_index=True)
-                                save_data("attendance_log", final_df)
-                                st.success(f"✅ {selected_name}님의 기록 업데이트 완료!"); st.rerun()
+                            # [v3.6 안전 잠금장치 추가]
+                            col_btn, col_chk = st.columns([1, 2])
+                            with col_chk:
+                                confirm_stat = st.checkbox("⚠️ 해당 성도의 출석 데이터 개별 덮어쓰기를 확정합니다.", key="stat_save_confirm")
+                            with col_btn:
+                                if st.button("💾 수정사항 저장하기", disabled=not confirm_stat, use_container_width=True):
+                                    df_rest = df_att[df_att["이름"] != selected_name]
+                                    new_person_data = []
+                                    for _, row in edited_log.iterrows():
+                                        if row["날짜"] and row["모임명"]:
+                                            clean_date = row["날짜"].split(" ")[0]
+                                            new_person_data.append({
+                                                "날짜": clean_date, "모임명": row["모임명"],
+                                                "이름": selected_name, "소그룹": row["소그룹"],
+                                                "출석여부": "출석"
+                                            })
+                                    final_df = pd.concat([df_rest, pd.DataFrame(new_person_data)], ignore_index=True)
+                                    save_data("attendance_log", final_df)
+                                    st.success(f"✅ {selected_name}님의 기록 업데이트 완료!"); st.rerun()
 
     elif sel_menu == "🙏 기도제목":
         st.subheader("기도제목 관리")
@@ -685,15 +672,18 @@ def main():
             else:
                 for i, r in weekly_prayers.iterrows():
                     with st.container():
-                        col_info, col_act = st.columns([8, 1])
+                        col_info, col_act = st.columns([8, 2])
                         with col_info:
                             st.markdown(f"**{r['이름']} ({r['소그룹']})** | {r['날짜']}")
                             st.info(r['내용'])
                         with col_act:
-                            if st.button("🗑️", key=f"adm_p_del_{i}"):
-                                df_prayer = df_prayer.drop(i)
-                                save_data("prayer_log", df_prayer)
-                                st.success("삭제됨"); time.sleep(0.5); st.rerun()
+                            # [v3.6 2단계 삭제 적용]
+                            with st.popover("🗑️ 삭제"):
+                                st.warning("정말 영구 삭제하시겠습니까?")
+                                if st.button("💥 확정 삭제", key=f"adm_p_del_{i}", use_container_width=True):
+                                    df_prayer = df_prayer.drop(i)
+                                    save_data("prayer_log", df_prayer)
+                                    st.success("삭제됨"); time.sleep(0.5); st.rerun()
                         st.divider()
 
         else:
@@ -740,7 +730,7 @@ def main():
                                 st.success("수정되었습니다."); time.sleep(0.5); st.rerun()
                             if c_cancel.form_submit_button("취소"):
                                 st.session_state[f"pray_edit_{i}"] = False
-                                r.rerun()
+                                st.rerun()
                     else:
                         col_content, col_btns = st.columns([8, 3]) 
                         with col_content:
@@ -752,10 +742,13 @@ def main():
                                     st.session_state[f"pray_edit_{i}"] = True
                                     st.rerun()
                             with b2:
-                                if st.button("🗑️ 삭제", key=f"p_del_{i}"):
-                                    df_prayer = df_prayer.drop(i)
-                                    save_data("prayer_log", df_prayer)
-                                    st.success("삭제됨"); time.sleep(0.5); st.rerun()
+                                # [v3.6 유저 삭제 2단계 적용]
+                                with st.popover("🗑️ 삭제"):
+                                    st.warning("정말 삭제하시겠습니까?")
+                                    if st.button("💥 확정", key=f"p_del_{i}", use_container_width=True):
+                                        df_prayer = df_prayer.drop(i)
+                                        save_data("prayer_log", df_prayer)
+                                        st.success("삭제됨"); time.sleep(0.5); st.rerun()
 
     elif sel_menu == "📨 사역 보고":
         st.subheader("📨 소그룹 사역 보고")
@@ -787,12 +780,15 @@ def main():
                                 original_idx = row.name 
                                 df_reports.at[original_idx, "답변"] = new_ans
                                 save_data("reports", df_reports)
-                                st.success(f"✅ {row['작성자']}님에게 답변을 저장했습니다!"); time.sleep(1); st.rerun()
+                                st.success(f"✅ {row['작성자']}님에게 답변을 저장했습니다!"); time.slice(1); st.rerun()
                         with c_del:
-                            if st.button("🗑️ 보고서 삭제", key=f"adm_del_{i}"):
-                                df_reports = df_reports.drop(row.name)
-                                save_data("reports", df_reports)
-                                st.success("삭제되었습니다."); time.sleep(0.5); st.rerun()
+                            # [v3.6 관리자 사역보고 삭제 2단계 적용]
+                            with st.popover("🗑️ 보고서 삭제"):
+                                st.warning("⚠️ 이 보고서를 정말 영구 삭제하시겠습니까? 복구할 수 없습니다.")
+                                if st.button("💥 정말 삭제", key=f"adm_del_{i}", use_container_width=True):
+                                    df_reports = df_reports.drop(row.name)
+                                    save_data("reports", df_reports)
+                                    st.success("삭제되었습니다."); time.sleep(0.5); st.rerun()
                         st.divider()
         else:
             st.markdown(f"### 📂 {current_user_name}님의 보고서")
@@ -843,10 +839,13 @@ def main():
                                 st.session_state[f"edit_mode_{i}"] = True
                                 st.rerun()
                         with c_del:
-                            if st.button("🗑️ 삭제", key=f"btn_del_{i}"):
-                                df_reports = df_reports.drop(i)
-                                save_data("reports", df_reports)
-                                st.success("삭제되었습니다."); time.sleep(0.5); st.rerun()
+                            # [v3.6 유저 사역보고 삭제 2단계 적용]
+                            with st.popover("🗑️ 삭제"):
+                                st.warning("정말 삭제하시겠습니까?")
+                                if st.button("💥 확정", key=f"btn_del_{i}", use_container_width=True):
+                                    df_reports = df_reports.drop(i)
+                                    save_data("reports", df_reports)
+                                    st.success("삭제되었습니다."); time.sleep(0.5); st.rerun()
 
     elif sel_menu == "👥 명단 관리":
         st.subheader("명단 관리")
@@ -887,15 +886,21 @@ def main():
 
         col_conf_mem = {"이름": st.column_config.TextColumn(pinned=True)}
         edited = st.data_editor(target, num_rows="dynamic", use_container_width=True, column_config=col_conf_mem)
-        if st.button("저장"):
-            if is_admin or is_viewer: 
-                save_data("members", edited)
-            else:
-                my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
-                mask = df_members["소그룹"].isin(my_gs)
-                others = df_members[~mask]
-                save_data("members", pd.concat([others, edited], ignore_index=True))
-            st.success("저장 완료!"); st.rerun()
+        
+        # [v3.6 명단 데이터 덮어쓰기 안전 장치 추가]
+        col_btn, col_chk = st.columns([1, 2])
+        with col_chk:
+            confirm_save = st.checkbox("⚠️ 명단 변경 사항(추가/삭제/수정)을 최종 확인했으며, 저장을 진행합니다.", key="mem_save_confirm")
+        with col_btn:
+            if st.button("저장", disabled=not confirm_save, use_container_width=True):
+                if is_admin or is_viewer: 
+                    save_data("members", edited)
+                else:
+                    my_gs = [g.strip() for g in str(current_user["담당소그룹"]).split(",") if g.strip()]
+                    mask = df_members["소그룹"].isin(my_gs)
+                    others = df_members[~mask]
+                    save_data("members", pd.concat([others, edited], ignore_index=True))
+                st.success("저장 완료!"); st.rerun()
 
     # --- 개발 로그 탭 ---
     elif sel_menu == "🛠️ 개발 로그":
