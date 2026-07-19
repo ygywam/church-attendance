@@ -31,7 +31,7 @@ MEETING_CONFIG = {
 ALL_MEETINGS_ORDERED = ["주일 1부", "주일 2부", "주일 오후", "주일학교", "중고등부", "청년부", "소그룹 모임", "수요예배", "금요철야"]
 
 # 페이지 기본 설정
-st.set_page_config(page_title="회정교회 출석부 v3.6", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="회정교회 출석부 v3.7", layout="wide", initial_sidebar_state="collapsed")
 
 # --- [스타일] CSS 적용 ---
 st.markdown("""
@@ -309,6 +309,8 @@ def draw_changelog():
     st.info("이 시스템이 발전해 온 기록입니다.")
 
     logs = [
+        ("v3.7", "2026-07-19", "관리자 사역 보고 답변 저장 오류 수정", 
+         "- **버그 픽스:** 관리자가 사역 보고서에 답변을 저장할 때 발생하던 화면 멈춤 현상(AttributeError: time.slice 오타) 수정\n- 정상적인 새로고침 및 UI 상태 업데이트 기능 복구"),
         ("v3.6", "2026-07-05", "데이터 전수 삭제 방지 안전 잠금장치(Safety Lock) 도입", 
          "- **실수 방지:** 무분별한 덮어쓰기 및 터치 실수를 원천 방지하기 위해 모든 관리자/유저 삭제 버튼에 2단계 확정 팝오버(Popover) 도입\n- **보안 가드:** 출석 저장, 명단 수정, 상세 통계 변경 시 '안전 확인 체크박스'를 체크해야만 최종 저장 버튼이 활성화되도록 UX 고도화"),
         ("v3.5", "2026-06-05", "정기 시스템 보완 및 안점 점검", 
@@ -323,8 +325,6 @@ def draw_changelog():
          "- 뷰어 계정(viewer)이 '명단 관리' 탭에서 전체 명단을 볼 수 있도록 권한 확대"),
         ("v3.0", "2026-01-30", "권한 체계 개편 및 뷰어(Viewer) 모드 도입", 
          "- 뷰어 계정 추가 및 공동 리더 프라이버시(작성자 기준 필터링) 보호 강화"),
-        ("v2.9", "2026-01-26", "관리자 기능 강화 및 UX 개선", 
-         "- [관리자] 통계 탭에 '날짜별/모임별 출석 인원' 현황표 추가\n- [관리자] 사역 보고 및 기도제목에 대한 '삭제 권한' 부여"),
     ]
 
     for ver, date, title, desc in logs:
@@ -337,7 +337,7 @@ def draw_changelog():
         """, unsafe_allow_html=True)
 
 def draw_manual_tab():
-    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v3.6)")
+    st.markdown("## 📘 회정교회 출석체크 시스템 사용법 (v3.7)")
     with st.expander("✅ 1. 출석체크 하는 법"):
         st.markdown("1. **[📋 출석체크]** 메뉴 선택.\n2. 상단 정렬 옵션에서 **'🌱 출석유무순'**을 쓰면 활동 성도가 위로 올라와 편합니다.\n3. 변경 사항을 체크한 후 하단 **안전 가드 체크박스**를 선택해야 저장 버튼이 활성화됩니다.")
     with st.expander("📊 2. 통계 및 보고서"):
@@ -397,7 +397,7 @@ def process_logout(cookie_manager):
 # --- 4. 메인 앱 ---
 def main():
     cookie_manager = stx.CookieManager(key="church_cookies")
-    st.title("⛪ 회정교회 출석체크 시스템 v3.6")
+    st.title("⛪ 회정교회 출석체크 시스템 v3.7")
 
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
@@ -543,7 +543,6 @@ def main():
                 st.success(f"📌 {grp} / {', '.join(target_meetings)} 출석을 체크합니다.")
                 edited_df = st.data_editor(df_grid, column_config=col_conf, hide_index=True, use_container_width=True)
 
-                # [v3.6 안전 잠금장치 추가]
                 col_btn, col_chk = st.columns([1, 2])
                 with col_chk:
                     confirm_att = st.checkbox("⚠️ 입력한 출석 정보가 정확하며, 데이터베이스 저장을 확정합니다.", key="att_save_confirm")
@@ -632,7 +631,6 @@ def main():
                             edit_target = person_log[["날짜", "모임명", "소그룹"]]
                             edited_log = st.data_editor(edit_target, num_rows="dynamic", use_container_width=True, key="stat_editor")
                             
-                            # [v3.6 안전 잠금장치 추가]
                             col_btn, col_chk = st.columns([1, 2])
                             with col_chk:
                                 confirm_stat = st.checkbox("⚠️ 해당 성도의 출석 데이터 개별 덮어쓰기를 확정합니다.", key="stat_save_confirm")
@@ -677,7 +675,6 @@ def main():
                             st.markdown(f"**{r['이름']} ({r['소그룹']})** | {r['날짜']}")
                             st.info(r['내용'])
                         with col_act:
-                            # [v3.6 2단계 삭제 적용]
                             with st.popover("🗑️ 삭제"):
                                 st.warning("정말 영구 삭제하시겠습니까?")
                                 if st.button("💥 확정 삭제", key=f"adm_p_del_{i}", use_container_width=True):
@@ -742,7 +739,6 @@ def main():
                                     st.session_state[f"pray_edit_{i}"] = True
                                     st.rerun()
                             with b2:
-                                # [v3.6 유저 삭제 2단계 적용]
                                 with st.popover("🗑️ 삭제"):
                                     st.warning("정말 삭제하시겠습니까?")
                                     if st.button("💥 확정", key=f"p_del_{i}", use_container_width=True):
@@ -780,9 +776,10 @@ def main():
                                 original_idx = row.name 
                                 df_reports.at[original_idx, "답변"] = new_ans
                                 save_data("reports", df_reports)
-                                st.success(f"✅ {row['작성자']}님에게 답변을 저장했습니다!"); time.slice(1); st.rerun()
+                                st.success(f"✅ {row['작성자']}님에게 답변을 저장했습니다!")
+                                time.sleep(1) # [v3.7 버그 픽스] time.slice(1) -> time.sleep(1) 오타 수정 완료
+                                st.rerun()
                         with c_del:
-                            # [v3.6 관리자 사역보고 삭제 2단계 적용]
                             with st.popover("🗑️ 보고서 삭제"):
                                 st.warning("⚠️ 이 보고서를 정말 영구 삭제하시겠습니까? 복구할 수 없습니다.")
                                 if st.button("💥 정말 삭제", key=f"adm_del_{i}", use_container_width=True):
@@ -839,7 +836,6 @@ def main():
                                 st.session_state[f"edit_mode_{i}"] = True
                                 st.rerun()
                         with c_del:
-                            # [v3.6 유저 사역보고 삭제 2단계 적용]
                             with st.popover("🗑️ 삭제"):
                                 st.warning("정말 삭제하시겠습니까?")
                                 if st.button("💥 확정", key=f"btn_del_{i}", use_container_width=True):
@@ -887,7 +883,6 @@ def main():
         col_conf_mem = {"이름": st.column_config.TextColumn(pinned=True)}
         edited = st.data_editor(target, num_rows="dynamic", use_container_width=True, column_config=col_conf_mem)
         
-        # [v3.6 명단 데이터 덮어쓰기 안전 장치 추가]
         col_btn, col_chk = st.columns([1, 2])
         with col_chk:
             confirm_save = st.checkbox("⚠️ 명단 변경 사항(추가/삭제/수정)을 최종 확인했으며, 저장을 진행합니다.", key="mem_save_confirm")
